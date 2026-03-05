@@ -1,0 +1,16 @@
+{
+  "id": "TKT-10050",
+  "subject": "Order #ORD-3100 - Overcharged for purchase",
+  "description": "Hi there,\n\nI just noticed that I was charged $89.99 for the ergonomic keyboard in my order #ORD-3100, but the listing price was $74.99 when I placed the order on February 20th. That's a $15.00 overcharge.\n\nCould you please refund the difference? I have a screenshot of the listing price if needed.\n\nThanks!",
+  "status": "new",
+  "priority": "normal",
+  "requester": {
+    "id": "CUST-7720",
+    "name": "David Park",
+    "email": "david.park@example.com",
+    "tier": "standard"
+  },
+  "tags": ["order_issue", "overcharge", "refund_request"],
+  "created_at": "2026-03-05T14:00:00Z",
+  "updated_at": "2026-03-05T14:00:00Z"
+}

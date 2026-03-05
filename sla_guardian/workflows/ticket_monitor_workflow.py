@@ -10,6 +10,7 @@ with workflow.unsafe.imports_passed_through():
     from .activities import SLAGuardianActivities
     from .data_types import (
         EscalationAction,
+        EscalationResult,
         EscalationTier,
         SLAStatus,
         SentimentReport,
@@ -242,11 +243,13 @@ class TicketMonitorWorkflow:
                 )
 
                 # Step 5: Execute escalation
-                await workflow.execute_activity_method(
-                    SLAGuardianActivities.escalate_ticket,
-                    args=[ticket_id, next_tier.value, drafted_message],
-                    start_to_close_timeout=activity_timeout,
-                    retry_policy=retry_policy,
+                escalation_result: EscalationResult = (
+                    await workflow.execute_activity_method(
+                        SLAGuardianActivities.escalate_ticket,
+                        args=[ticket_id, next_tier.value, drafted_message],
+                        start_to_close_timeout=activity_timeout,
+                        retry_policy=retry_policy,
+                    )
                 )
 
                 # Record escalation in history

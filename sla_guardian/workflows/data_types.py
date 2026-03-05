@@ -27,6 +27,10 @@ class UrgencyClassification(BaseModel):
     reasoning: str
     urgency_score: float = 0.0  # 0-1 scale
     priority_override: bool = False
+    customer_tier: str = "standard"
+    time_pressure: str = ""  # e.g. "2h 15m remaining of 4h SLA"
+    comment_count: int = 0
+    signals_detected: list[str] = Field(default_factory=list)
 
 
 class SentimentReport(BaseModel):
@@ -35,6 +39,12 @@ class SentimentReport(BaseModel):
     frustration_trajectory: str  # improving, stable, worsening
     key_phrases: list[str] = Field(default_factory=list)
     escalation_risk: float = 0.0  # 0-1
+    frustration_score: float = 0.0  # 0-10 scale
+    positive_score: float = 0.0  # 0-10 scale
+    comment_count: int = 0
+    first_comment_sentiment: str = ""
+    latest_comment_sentiment: str = ""
+    actionable_insights: list[str] = Field(default_factory=list)
 
 
 class EscalationAction(BaseModel):
@@ -44,6 +54,17 @@ class EscalationAction(BaseModel):
     reason: str
     drafted_message: str
     auto_escalated: bool = True
+
+
+class EscalationResult(BaseModel):
+    ticket_id: str
+    escalated_to: str
+    status: str
+    message_posted: bool
+    timestamp: str = ""
+    assigned_team: str = ""
+    expected_response_time: str = ""
+    internal_note_id: str = ""
 
 
 class TicketMonitorState(BaseModel):
