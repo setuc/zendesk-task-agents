@@ -1,0 +1,15 @@
+{
+  "ORD-2847": {
+    "tracking_id": "TRK-88421",
+    "order_id": "ORD-2847",
+    "carrier": "FedEx",
+    "status": "delivered",
+    "shipped_at": "2026-02-26T08:00:00Z",
+    "delivered_at": "2026-03-01T09:15:00Z",
+    "events": [
+      {"timestamp": "2026-02-26T08:00:00Z", "status": "shipped", "location": "Warehouse"},
+      {"timestamp": "2026-02-28T14:30:00Z", "status": "in_transit", "location": "Distribution Center"},
+      {"timestamp": "2026-03-01T09:15:00Z", "status": "delivered", "location": "Customer Address"}
+    ]
+  }
+}

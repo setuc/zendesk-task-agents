@@ -1,0 +1,16 @@
+{
+  "ORD-2847": {
+    "order_id": "ORD-2847",
+    "customer_id": "CUST-5591",
+    "status": "delivered",
+    "items": [
+      {"item_id": "ITEM-001", "name": "Wireless Headphones", "color": "red", "price": 129.99, "quantity": 1},
+      {"item_id": "ITEM-002", "name": "Laptop Stand", "color": "silver", "price": 45.99, "quantity": 1},
+      {"item_id": "ITEM-003", "name": "USB-C Hub", "color": "black", "price": 28.99, "quantity": 1}
+    ],
+    "subtotal": 204.97,
+    "charged_total": 224.97,
+    "placed_at": "2026-02-25T14:22:00Z",
+    "delivered_at": "2026-03-01T09:15:00Z"
+  }
+}
