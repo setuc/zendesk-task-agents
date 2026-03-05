@@ -244,7 +244,7 @@ class OrderResolutionActivities:
                     action=step.action,
                     result_data=result,
                     compensation_data={
-                        "refund_id": result.get("refund_id"),
+                        "refund_id": result.get("transaction_id"),
                         "action": "reverse_refund",
                     },
                 )

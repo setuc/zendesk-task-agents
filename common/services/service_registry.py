@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from examples.zendesk_task_agents.common.services.zendesk_mock import MockZendeskService
+from .zendesk_mock import MockZendeskService
 
 
 def create_services(use_real: bool = False, **kwargs: Any) -> dict[str, Any]:

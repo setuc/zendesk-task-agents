@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from examples.zendesk_task_agents.common.data_types import (
+from ..data_types import (
     CustomerInfo,
     TicketInfo,
     TicketPriority,

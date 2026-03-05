@@ -106,22 +106,25 @@ class OnboardingWorkflow:
     # ------------------------------------------------------------------ #
 
     @workflow.run
-    async def run(self, plan: OnboardingPlan) -> OnboardingState:
+    async def run(self, input_data: OnboardingPlan | OnboardingState) -> OnboardingState:
         """Execute the full onboarding plan.
 
         Args:
-            plan: The onboarding plan with customer details and milestones.
+            input_data: Either an OnboardingPlan (fresh start) or an
+                OnboardingState (resumed via continue-as-new).
 
         Returns:
             Final OnboardingState after all milestones are processed.
         """
-        # Initialise or restore state
-        if self._state is None:
+        # Restore state from continue-as-new, or initialise fresh
+        if isinstance(input_data, OnboardingState):
+            self._state = input_data
+        elif self._state is None:
             self._state = OnboardingState(
-                customer_id=plan.customer_id,
-                plan=plan,
+                customer_id=input_data.customer_id,
+                plan=input_data,
             )
-            plan.started_at = datetime.now(timezone.utc)
+            input_data.started_at = datetime.now(timezone.utc)
 
         activity_timeout = timedelta(seconds=120)
         retry_policy = RetryPolicy(
@@ -339,7 +342,7 @@ class OnboardingWorkflow:
                         "Event history approaching limit, continuing as new"
                     )
                     self._state.current_milestone_index = i + 1
-                    workflow.continue_as_new(args=[self._state.plan])
+                    workflow.continue_as_new(args=[self._state])
 
             # All milestones processed
             self._state.current_stage = OnboardingStage.COMPLETED
