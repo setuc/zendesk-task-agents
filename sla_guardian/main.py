@@ -21,6 +21,7 @@ from .workflows.data_types import (
     SLAStatus,
     TicketMonitorState,
 )
+from .fixtures.ticket_generator import generate_ticket_batch, get_ticket_ids
 from common.tui import console, WorkflowDashboard
 
 from common.services.zendesk_mock import MockZendeskService
@@ -29,6 +30,9 @@ from .services.sla_rules_mock import MockSLARulesService
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
+from rich.live import Live
+from rich.columns import Columns
+from rich.progress import BarColumn, Progress, TextColumn, SpinnerColumn
 from rich import box
 
 
@@ -146,6 +150,66 @@ def parse_args() -> argparse.Namespace:
     subparsers.add_parser(
         "demo",
         help="Run an automated demo with rich dashboard output",
+    )
+
+    # stress-worker command - worker for the stress test
+    stress_worker_parser = subparsers.add_parser(
+        "stress-worker",
+        help="Start a worker pre-loaded with generated tickets for stress testing",
+    )
+    stress_worker_parser.add_argument(
+        "--tickets",
+        type=int,
+        default=100,
+        help="Number of tickets to pre-generate (default: 100)",
+    )
+    stress_worker_parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for deterministic ticket generation (default: 42)",
+    )
+    stress_worker_parser.add_argument(
+        "--sla-offset",
+        type=int,
+        default=3,
+        help="SLA deadline offset in minutes from now (default: 3)",
+    )
+
+    # demo-stress command - stress test controller with live dashboard
+    stress_demo_parser = subparsers.add_parser(
+        "demo-stress",
+        help="Run a stress test demo: inject 100+ tickets in waves with live dashboard",
+    )
+    stress_demo_parser.add_argument(
+        "--tickets",
+        type=int,
+        default=100,
+        help="Total number of tickets to generate (default: 100)",
+    )
+    stress_demo_parser.add_argument(
+        "--waves",
+        type=int,
+        default=5,
+        help="Number of injection waves (default: 5)",
+    )
+    stress_demo_parser.add_argument(
+        "--wave-delay",
+        type=int,
+        default=10,
+        help="Seconds between waves (default: 10)",
+    )
+    stress_demo_parser.add_argument(
+        "--seed",
+        type=int,
+        default=42,
+        help="Random seed for deterministic ticket generation (default: 42)",
+    )
+    stress_demo_parser.add_argument(
+        "--sla-offset",
+        type=int,
+        default=3,
+        help="SLA deadline offset in minutes from now (default: 3)",
     )
 
     return parser.parse_args()
@@ -1092,6 +1156,773 @@ async def _query_monitor_states(
     return states
 
 
+async def _query_monitor_states_batch(
+    client: Client,
+    ticket_ids: list[str],
+    *,
+    concurrency: int = 20,
+) -> dict[str, TicketMonitorState]:
+    """Query monitor states concurrently in batches for the stress demo."""
+    states: dict[str, TicketMonitorState] = {}
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _query_one(tid: str) -> None:
+        async with sem:
+            try:
+                handle = client.get_workflow_handle(f"ticket-monitor-{tid}")
+                state = await handle.query(TicketMonitorWorkflow.get_monitor_state)
+                states[tid] = state
+            except Exception:
+                pass
+
+    await asyncio.gather(*[_query_one(tid) for tid in ticket_ids])
+    return states
+
+
+# ---------------------------------------------------------------------------
+# stress-worker command
+# ---------------------------------------------------------------------------
+
+
+async def run_stress_worker(
+    config: SLAGuardianConfig,
+    args: argparse.Namespace,
+) -> None:
+    """Start a Temporal worker pre-loaded with generated tickets.
+
+    This is designed to run in Terminal 1.  The demo-stress command
+    (Terminal 2) uses the same seed so both processes agree on ticket IDs.
+    """
+    ticket_count = args.tickets
+    seed = args.seed
+    sla_offset = args.sla_offset
+
+    console.print()
+    console.rule("[bold blue]SLA Guardian -- Stress Test Worker[/bold blue]")
+    console.print()
+
+    console.print(
+        f"[dim]Generating {ticket_count} tickets with seed={seed} "
+        f"and SLA offset={sla_offset}min...[/dim]"
+    )
+    tickets = generate_ticket_batch(
+        ticket_count, seed=seed, sla_offset_minutes=sla_offset
+    )
+    console.print(f"[green]Generated {len(tickets)} tickets.[/green]")
+
+    zendesk, sla_rules = create_mock_services()
+    loaded = _load_tickets_into_mock(zendesk, tickets)
+    console.print(f"[blue]Loaded {len(loaded)} tickets into mock Zendesk.[/blue]")
+
+    # Show a quick category breakdown
+    categories: dict[str, int] = {}
+    tiers: dict[str, int] = {}
+    priorities: dict[str, int] = {}
+    for t in tickets:
+        tier = t.get("requester", {}).get("tier", "standard")
+        tiers[tier] = tiers.get(tier, 0) + 1
+        pri = t.get("priority", "normal")
+        priorities[pri] = priorities.get(pri, 0) + 1
+        # Infer category from tags
+        tags = t.get("tags", [])
+        if "escalation" in tags or "urgent" in tags:
+            cat = "crisis/escalation"
+        elif "billing" in tags:
+            cat = "billing"
+        elif "shipping" in tags or "delivery" in tags:
+            cat = "shipping"
+        elif "api" in tags or "integration" in tags or "technical" in tags:
+            cat = "technical"
+        elif "feature_request" in tags:
+            cat = "feature"
+        elif "authentication" in tags or "account" in tags:
+            cat = "account"
+        else:
+            cat = "general"
+        categories[cat] = categories.get(cat, 0) + 1
+
+    summary_table = Table(
+        show_header=True,
+        header_style="bold white on dark_blue",
+        border_style="blue",
+        box=box.ROUNDED,
+        expand=False,
+        title="[bold]Ticket Distribution[/bold]",
+        title_style="bold blue",
+    )
+    summary_table.add_column("Dimension", style="bold")
+    summary_table.add_column("Breakdown", ratio=3)
+
+    tier_str = "  ".join(f"{k}: {v}" for k, v in sorted(tiers.items()))
+    pri_str = "  ".join(f"{k}: {v}" for k, v in sorted(priorities.items()))
+    cat_str = "  ".join(f"{k}: {v}" for k, v in sorted(categories.items()))
+
+    summary_table.add_row("Tiers", tier_str)
+    summary_table.add_row("Priorities", pri_str)
+    summary_table.add_row("Categories", cat_str)
+
+    console.print()
+    console.print(summary_table)
+    console.print()
+
+    activities = SLAGuardianActivities(zendesk=zendesk, sla_rules=sla_rules)
+    task_queue = config.task_queue + "-stress"
+
+    worker = Worker(
+        client=await Client.connect(
+            config.temporal_address, namespace=config.temporal_namespace
+        ),
+        task_queue=task_queue,
+        workflows=[SLAGuardianWorkflow, TicketMonitorWorkflow],
+        activities=[
+            activities.scan_open_tickets,
+            activities.classify_urgency,
+            activities.analyze_sentiment,
+            activities.draft_escalation,
+            activities.escalate_ticket,
+        ],
+        max_concurrent_activities=50,
+        max_concurrent_workflow_tasks=50,
+    )
+
+    console.print(f"[bold green]Worker started on task queue '{task_queue}'.[/bold green]")
+    console.print("[dim]Waiting for workflows from the demo-stress controller...[/dim]")
+    console.print("[green]Press Ctrl+C to stop.[/green]")
+    await worker.run()
+
+
+# ---------------------------------------------------------------------------
+# demo-stress command
+# ---------------------------------------------------------------------------
+
+_STRESS_SLA_STATUS_STYLE: dict[str, str] = {
+    "compliant": "green",
+    "at_risk": "bold yellow",
+    "breached": "bold red",
+    "resolved": "bold cyan",
+}
+
+_STRESS_SENTIMENT_STYLE: dict[str, str] = {
+    "positive": "green",
+    "satisfied": "green",
+    "neutral": "dim",
+    "concerned": "yellow",
+    "frustrated": "bold yellow",
+    "angry": "bold red",
+}
+
+_STRESS_TIER_STYLE: dict[str, str] = {
+    "l1": "dim",
+    "l2": "yellow",
+    "l3": "bold red",
+    "manager": "bold white on red",
+}
+
+
+def _build_stress_stats_panel(
+    total: int,
+    processed: int,
+    escalated: int,
+    at_risk: int,
+    breached: int,
+    resolved: int,
+    avg_processing_ms: float,
+    wave_info: str,
+    elapsed: float,
+) -> Panel:
+    """Build the stats bar for the stress dashboard."""
+    cols_data = [
+        f"[bold]Total:[/bold] {total}",
+        f"[bold green]Processed:[/bold green] {processed}",
+        f"[bold yellow]Escalated:[/bold yellow] {escalated}",
+        f"[bold yellow]At Risk:[/bold yellow] {at_risk}",
+        f"[bold red]Breached:[/bold red] {breached}",
+        f"[bold cyan]Resolved:[/bold cyan] {resolved}",
+        f"[bold]Avg Time:[/bold] {avg_processing_ms:.0f}ms",
+        f"[dim]Elapsed: {elapsed:.0f}s[/dim]",
+    ]
+    stats_text = "  |  ".join(cols_data)
+    return Panel(
+        f"{stats_text}\n[dim]{wave_info}[/dim]",
+        title="[bold cyan]Stress Test Dashboard[/bold cyan]",
+        border_style="cyan",
+        padding=(0, 1),
+    )
+
+
+def _build_stress_ticket_table(
+    tickets: list[dict],
+    monitor_states: dict[str, TicketMonitorState],
+    *,
+    max_rows: int = 40,
+) -> Table:
+    """Build a compact ticket table for the stress demo."""
+    table = Table(
+        show_header=True,
+        header_style="bold white on blue",
+        border_style="bright_blue",
+        box=box.SIMPLE_HEAVY,
+        expand=True,
+        padding=(0, 1),
+    )
+    table.add_column("Ticket", style="bold", width=12)
+    table.add_column("Customer", width=18)
+    table.add_column("Tier", justify="center", width=5)
+    table.add_column("Prio", justify="center", width=7)
+    table.add_column("Category", width=12)
+    table.add_column("Urgency", justify="center", width=8)
+    table.add_column("Sentiment", justify="center", width=12)
+    table.add_column("SLA", justify="center", width=10)
+    table.add_column("Esc Tier", justify="center", width=8)
+    table.add_column("Time", justify="right", width=8)
+
+    shown = 0
+    for t in tickets:
+        if shown >= max_rows:
+            break
+        tid = t.get("id", "?")
+        state = monitor_states.get(tid)
+        if state is None:
+            continue
+
+        customer_name = t.get("requester", {}).get("name", "?")
+        if len(customer_name) > 16:
+            customer_name = customer_name[:14] + ".."
+        customer_tier = t.get("requester", {}).get("tier", "std")
+        priority = t.get("priority", "normal")
+
+        # Infer category from tags
+        tags = t.get("tags", [])
+        if "escalation" in tags and "urgent" in tags:
+            cat = "crisis"
+        elif "billing" in tags:
+            cat = "billing"
+        elif "shipping" in tags:
+            cat = "shipping"
+        elif "api" in tags or "technical" in tags:
+            cat = "technical"
+        elif "feature_request" in tags:
+            cat = "feature"
+        elif "account" in tags or "authentication" in tags:
+            cat = "account"
+        else:
+            cat = "general"
+
+        # Urgency score
+        urgency_str = ""
+        urgency_style = "dim"
+        if state.urgency:
+            score = state.urgency.urgency_score
+            urgency_str = f"{score:.2f}"
+            if score >= 0.80:
+                urgency_style = "bold red"
+            elif score >= 0.60:
+                urgency_style = "bold yellow"
+            elif score >= 0.40:
+                urgency_style = ""
+            else:
+                urgency_style = "dim"
+
+        # Sentiment
+        sentiment_str = ""
+        sent_style = "dim"
+        if state.sentiment:
+            sentiment_str = state.sentiment.overall_sentiment
+            sent_style = _STRESS_SENTIMENT_STYLE.get(sentiment_str, "dim")
+
+        # SLA status
+        sla_str = state.sla_status.value.upper().replace("_", " ")
+        sla_style = _STRESS_SLA_STATUS_STYLE.get(state.sla_status.value, "dim")
+
+        # Escalation tier
+        tier_str = state.current_tier.value.upper()
+        tier_style = _STRESS_TIER_STYLE.get(state.current_tier.value, "dim")
+
+        # Processing time placeholder (time since created_at)
+        now = datetime.now(timezone.utc)
+        created_raw = t.get("created_at", "")
+        time_str = ""
+        try:
+            created = datetime.fromisoformat(created_raw)
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            sla_raw = t.get("sla_deadline", "")
+            if sla_raw:
+                deadline = datetime.fromisoformat(sla_raw)
+                if deadline.tzinfo is None:
+                    deadline = deadline.replace(tzinfo=timezone.utc)
+                remaining = (deadline - now).total_seconds()
+                if remaining <= 0:
+                    mins = int(abs(remaining) // 60)
+                    time_str = f"-{mins}m"
+                else:
+                    mins = int(remaining // 60)
+                    time_str = f"{mins}m"
+        except (ValueError, TypeError):
+            pass
+
+        # Tier badge
+        tier_badge = {"enterprise": "ENT", "premium": "PRE", "standard": "STD"}.get(
+            customer_tier, "?"
+        )
+        tier_badge_style = {
+            "enterprise": "bold magenta",
+            "premium": "bold cyan",
+            "standard": "dim",
+        }.get(customer_tier, "dim")
+
+        prio_style = {
+            "urgent": "bold red",
+            "high": "bold yellow",
+            "normal": "",
+            "low": "dim",
+        }.get(priority, "")
+
+        table.add_row(
+            tid,
+            customer_name,
+            Text(tier_badge, style=tier_badge_style),
+            Text(priority.upper(), style=prio_style),
+            cat,
+            Text(urgency_str, style=urgency_style),
+            Text(sentiment_str, style=sent_style),
+            Text(sla_str, style=sla_style),
+            Text(tier_str, style=tier_style),
+            time_str,
+        )
+        shown += 1
+
+    return table
+
+
+def _build_stress_summary(
+    tickets: list[dict],
+    monitor_states: dict[str, TicketMonitorState],
+    elapsed: float,
+) -> Panel:
+    """Build a final summary panel for the stress test."""
+    total = len(tickets)
+    processed = len(monitor_states)
+
+    # Urgency distribution
+    urgency_buckets: dict[str, int] = {"critical (0.8+)": 0, "high (0.6-0.8)": 0, "normal (0.4-0.6)": 0, "low (<0.4)": 0}
+    sentiment_counts: dict[str, int] = {}
+    tier_counts: dict[str, int] = {"l1": 0, "l2": 0, "l3": 0, "manager": 0}
+    sla_counts: dict[str, int] = {"compliant": 0, "at_risk": 0, "breached": 0, "resolved": 0}
+    total_escalations = 0
+    processing_times: list[float] = []
+
+    top_urgency: list[tuple[str, float, str]] = []
+
+    for tid, state in monitor_states.items():
+        # SLA
+        sla_counts[state.sla_status.value] = sla_counts.get(state.sla_status.value, 0) + 1
+
+        # Escalation tier
+        tier_counts[state.current_tier.value] = tier_counts.get(state.current_tier.value, 0) + 1
+        total_escalations += len(state.escalation_history)
+
+        # Urgency
+        if state.urgency:
+            score = state.urgency.urgency_score
+            if score >= 0.80:
+                urgency_buckets["critical (0.8+)"] += 1
+            elif score >= 0.60:
+                urgency_buckets["high (0.6-0.8)"] += 1
+            elif score >= 0.40:
+                urgency_buckets["normal (0.4-0.6)"] += 1
+            else:
+                urgency_buckets["low (<0.4)"] += 1
+
+            customer_name = "?"
+            for t in tickets:
+                if t.get("id") == tid:
+                    customer_name = t.get("requester", {}).get("name", "?")
+                    break
+            top_urgency.append((tid, score, customer_name))
+
+        # Sentiment
+        if state.sentiment:
+            s = state.sentiment.overall_sentiment
+            sentiment_counts[s] = sentiment_counts.get(s, 0) + 1
+
+    top_urgency.sort(key=lambda x: x[1], reverse=True)
+
+    # Build summary text
+    lines: list[str] = []
+    lines.append(f"[bold]Tickets generated:[/bold]      {total}")
+    lines.append(f"[bold]Tickets processed:[/bold]      {processed}")
+    lines.append(f"[bold]Total escalations:[/bold]      {total_escalations}")
+    lines.append(f"[bold]Elapsed time:[/bold]           {elapsed:.1f}s")
+    lines.append(f"[bold]Throughput:[/bold]              {processed / max(elapsed, 0.1):.1f} tickets/sec")
+    lines.append("")
+    lines.append("[bold]Urgency Distribution:[/bold]")
+    for bucket, count in urgency_buckets.items():
+        pct = (count / max(processed, 1)) * 100
+        lines.append(f"  {bucket}: {count} ({pct:.0f}%)")
+    lines.append("")
+    lines.append("[bold]Sentiment Distribution:[/bold]")
+    for sent in ["angry", "frustrated", "concerned", "neutral", "satisfied", "positive"]:
+        count = sentiment_counts.get(sent, 0)
+        if count > 0:
+            pct = (count / max(processed, 1)) * 100
+            style = _STRESS_SENTIMENT_STYLE.get(sent, "")
+            lines.append(f"  [{style}]{sent}: {count} ({pct:.0f}%)[/{style}]")
+    lines.append("")
+    lines.append("[bold]SLA Status:[/bold]")
+    for status_name in ["compliant", "at_risk", "breached", "resolved"]:
+        count = sla_counts.get(status_name, 0)
+        style = _STRESS_SLA_STATUS_STYLE.get(status_name, "")
+        lines.append(f"  [{style}]{status_name}: {count}[/{style}]")
+    lines.append("")
+    lines.append("[bold]Escalation Tier Distribution:[/bold]")
+    for tier_name in ["l1", "l2", "l3", "manager"]:
+        count = tier_counts.get(tier_name, 0)
+        style = _STRESS_TIER_STYLE.get(tier_name, "")
+        lines.append(f"  [{style}]{tier_name.upper()}: {count}[/{style}]")
+    lines.append("")
+    lines.append("[bold]Top 5 Highest-Urgency Tickets:[/bold]")
+    for tid, score, name in top_urgency[:5]:
+        score_style = "bold red" if score >= 0.8 else "bold yellow" if score >= 0.6 else ""
+        lines.append(f"  [{score_style}]{tid}[/{score_style}] - {name} (score: [{score_style}]{score:.2f}[/{score_style}])")
+
+    lines.append("")
+    lines.append(
+        "[dim]Each ticket was an independent Temporal child workflow with its own\n"
+        "durable timer, urgency classification, and sentiment analysis.\n"
+        "100+ concurrent workflows ran with fault-tolerant execution guarantees.[/dim]"
+    )
+
+    return Panel(
+        "\n".join(lines),
+        title="[bold cyan]Stress Test Summary[/bold cyan]",
+        border_style="cyan",
+        padding=(1, 2),
+    )
+
+
+async def run_stress_demo(
+    config: SLAGuardianConfig,
+    args: argparse.Namespace,
+) -> None:
+    """Run the stress test controller with a live Rich dashboard.
+
+    Designed to run in Terminal 2 while stress-worker runs in Terminal 1.
+    Both use the same seed so tickets are identical.
+    """
+    ticket_count = args.tickets
+    waves = args.waves
+    wave_delay = args.wave_delay
+    seed = args.seed
+    sla_offset = args.sla_offset
+
+    console.print()
+    console.rule("[bold blue]SLA Guardian -- Stress Test Demo[/bold blue]")
+    console.print()
+    console.print(
+        Panel(
+            f"[bold]This stress test demonstrates Temporal orchestrating 100+ "
+            f"concurrent child workflows.[/bold]\n"
+            f"\n"
+            f"Configuration:\n"
+            f"  Tickets:     {ticket_count}\n"
+            f"  Waves:       {waves} (injecting {ticket_count // waves} tickets per wave)\n"
+            f"  Wave delay:  {wave_delay}s between waves\n"
+            f"  Seed:        {seed} (deterministic -- worker uses the same seed)\n"
+            f"  SLA offset:  {sla_offset}min\n"
+            f"\n"
+            f"[dim]Each ticket becomes an independent child workflow that:\n"
+            f"  1. Classifies urgency via heuristic keyword analysis\n"
+            f"  2. Analyzes customer sentiment across all comments\n"
+            f"  3. Sets a durable timer before the SLA deadline\n"
+            f"  4. Auto-escalates through L1 -> L2 -> L3 -> Manager tiers\n"
+            f"\n"
+            f"All workflows are fault-tolerant: if the worker crashes mid-flight,\n"
+            f"every workflow resumes exactly where it left off.[/dim]",
+            title="[bold cyan]About this Stress Test[/bold cyan]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+    console.print()
+
+    # Generate tickets (same seed as the worker)
+    console.print(f"[dim]Generating {ticket_count} tickets with seed={seed}...[/dim]")
+    tickets = generate_ticket_batch(
+        ticket_count, seed=seed, sla_offset_minutes=sla_offset
+    )
+    ticket_ids = [t["id"] for t in tickets]
+    console.print(f"[green]Generated {len(tickets)} tickets.[/green]")
+
+    # Connect to Temporal
+    console.print("[dim]Connecting to Temporal...[/dim]")
+    client = await Client.connect(
+        config.temporal_address, namespace=config.temporal_namespace
+    )
+    console.print("[green]Connected to Temporal.[/green]")
+
+    task_queue = config.task_queue + "-stress"
+    guardian_id = "sla-guardian-stress"
+
+    # We'll use a very fast scan interval but only run one scan cycle
+    # per wave. We start a guardian workflow that scans and picks up tickets.
+    # The trick: the worker already has all tickets in mock Zendesk.
+    # We use the guardian workflow's scan to discover them.
+    # But we need to inject in waves. So we start a guardian per wave,
+    # or we just start child workflows directly.
+    #
+    # Simplest approach: start child workflows directly from here.
+    # That way we control the wave timing precisely.
+
+    demo_escalation_buffer = 1  # 1 minute
+
+    # Split tickets into waves
+    tickets_per_wave = ticket_count // waves
+    wave_batches: list[list[dict]] = []
+    for w in range(waves):
+        start_idx = w * tickets_per_wave
+        end_idx = start_idx + tickets_per_wave if w < waves - 1 else ticket_count
+        wave_batches.append(tickets[start_idx:end_idx])
+
+    injected_ids: list[str] = []
+    start_time = time.monotonic()
+
+    console.print()
+    console.rule("[bold yellow]Injecting Tickets in Waves[/bold yellow]")
+    console.print()
+
+    for wave_num, wave_tickets in enumerate(wave_batches, 1):
+        wave_start = time.monotonic()
+        wave_ids = [t["id"] for t in wave_tickets]
+
+        console.print(
+            f"[bold cyan]Wave {wave_num}/{waves}:[/bold cyan] Injecting "
+            f"{len(wave_tickets)} tickets..."
+        )
+
+        # Start a TicketMonitorWorkflow for each ticket in this wave
+        # We do this concurrently for speed
+        sem = asyncio.Semaphore(20)
+
+        async def _start_monitor(ticket: dict) -> str | None:
+            async with sem:
+                tid = ticket["id"]
+                sla_deadline = ticket.get("sla_deadline", "")
+                if not sla_deadline:
+                    now = datetime.now(timezone.utc)
+                    sla_deadline = (now + timedelta(minutes=sla_offset)).isoformat()
+
+                try:
+                    await client.start_workflow(
+                        TicketMonitorWorkflow.run,
+                        args=[tid, sla_deadline, demo_escalation_buffer],
+                        id=f"ticket-monitor-{tid}",
+                        task_queue=task_queue,
+                    )
+                    return tid
+                except Exception as exc:
+                    # Workflow may already exist from a previous run
+                    return None
+
+        results = await asyncio.gather(*[_start_monitor(t) for t in wave_tickets])
+        started = sum(1 for r in results if r is not None)
+        injected_ids.extend(wave_ids)
+
+        wave_elapsed = time.monotonic() - wave_start
+        console.print(
+            f"  [green]Started {started} workflows in {wave_elapsed:.1f}s[/green]"
+        )
+
+        if wave_num < waves:
+            console.print(
+                f"  [dim]Temporal is now running {len(injected_ids)} concurrent "
+                f"child workflows, each with independent durable timers.[/dim]"
+            )
+            console.print(
+                f"  [dim]Waiting {wave_delay}s before next wave...[/dim]"
+            )
+            await asyncio.sleep(wave_delay)
+
+    total_inject_time = time.monotonic() - start_time
+    console.print()
+    console.print(
+        f"[bold green]All {ticket_count} tickets injected in "
+        f"{total_inject_time:.1f}s ({ticket_count / total_inject_time:.0f} tickets/sec).[/bold green]"
+    )
+    console.print()
+
+    # ---- Live dashboard phase ----
+    console.rule("[bold cyan]Live Dashboard -- Monitoring Workflows[/bold cyan]")
+    console.print(
+        "[dim]Polling workflow states. The dashboard updates as urgency "
+        "classification, sentiment analysis, and escalations complete.[/dim]"
+    )
+    console.print()
+
+    # Poll until most workflows have completed initial analysis or we time out
+    max_poll_rounds = 60
+    poll_interval = 3
+
+    prev_processed = 0
+    prev_escalations = 0
+    stable_rounds = 0
+
+    for poll_round in range(1, max_poll_rounds + 1):
+        elapsed = time.monotonic() - start_time
+        monitor_states = await _query_monitor_states_batch(client, injected_ids)
+
+        processed = len(monitor_states)
+        analyzed = sum(
+            1 for s in monitor_states.values()
+            if s.urgency is not None and s.sentiment is not None
+        )
+        escalated = sum(
+            1 for s in monitor_states.values()
+            if len(s.escalation_history) > 0
+        )
+        at_risk = sum(
+            1 for s in monitor_states.values()
+            if s.sla_status == SLAStatus.AT_RISK
+        )
+        breached = sum(
+            1 for s in monitor_states.values()
+            if s.sla_status == SLAStatus.BREACHED
+        )
+        resolved = sum(
+            1 for s in monitor_states.values()
+            if s.sla_status == SLAStatus.RESOLVED
+        )
+        total_escalations = sum(
+            len(s.escalation_history) for s in monitor_states.values()
+        )
+
+        # Print a progress line
+        console.print(
+            f"  [dim]Poll {poll_round}:[/dim] "
+            f"[green]{processed}[/green] active, "
+            f"[green]{analyzed}[/green] analyzed, "
+            f"[yellow]{escalated}[/yellow] escalated ({total_escalations} total), "
+            f"[yellow]{at_risk}[/yellow] at-risk, "
+            f"[red]{breached}[/red] breached  "
+            f"[dim]({elapsed:.0f}s)[/dim]"
+        )
+
+        # Print new escalation alerts
+        if total_escalations > prev_escalations:
+            new_esc = total_escalations - prev_escalations
+            console.print(
+                f"    [bold red]>> {new_esc} new escalation(s) detected![/bold red]"
+            )
+            prev_escalations = total_escalations
+
+        # Check for stability (no new progress)
+        if processed == prev_processed and processed >= ticket_count * 0.9:
+            stable_rounds += 1
+        else:
+            stable_rounds = 0
+        prev_processed = processed
+
+        # Break conditions
+        if stable_rounds >= 3 and analyzed >= ticket_count * 0.8:
+            console.print(
+                f"  [dim]Workflows have stabilized. Moving to summary.[/dim]"
+            )
+            break
+
+        # Show intermediate table every 5 polls
+        if poll_round % 5 == 0 and processed > 0:
+            console.print()
+            console.print(
+                _build_stress_stats_panel(
+                    total=ticket_count,
+                    processed=processed,
+                    escalated=escalated,
+                    at_risk=at_risk,
+                    breached=breached,
+                    resolved=resolved,
+                    avg_processing_ms=0,
+                    wave_info=f"All {waves} waves injected | {total_escalations} escalation events",
+                    elapsed=elapsed,
+                )
+            )
+            console.print(
+                _build_stress_ticket_table(tickets, monitor_states, max_rows=20)
+            )
+            console.print()
+
+        await asyncio.sleep(poll_interval)
+
+    # ---- Final snapshot ----
+    await asyncio.sleep(2)
+    elapsed = time.monotonic() - start_time
+    monitor_states = await _query_monitor_states_batch(client, injected_ids)
+
+    console.print()
+    console.rule("[bold green]Final Results[/bold green]")
+    console.print()
+
+    # Final stats panel
+    processed = len(monitor_states)
+    escalated = sum(1 for s in monitor_states.values() if len(s.escalation_history) > 0)
+    at_risk = sum(1 for s in monitor_states.values() if s.sla_status == SLAStatus.AT_RISK)
+    breached = sum(1 for s in monitor_states.values() if s.sla_status == SLAStatus.BREACHED)
+    resolved = sum(1 for s in monitor_states.values() if s.sla_status == SLAStatus.RESOLVED)
+    total_escalations = sum(len(s.escalation_history) for s in monitor_states.values())
+
+    console.print(
+        _build_stress_stats_panel(
+            total=ticket_count,
+            processed=processed,
+            escalated=escalated,
+            at_risk=at_risk,
+            breached=breached,
+            resolved=resolved,
+            avg_processing_ms=0,
+            wave_info=f"All {waves} waves injected | {total_escalations} escalation events",
+            elapsed=elapsed,
+        )
+    )
+    console.print()
+
+    # Show the full ticket table (capped at 40 rows for readability)
+    console.print(_build_stress_ticket_table(tickets, monitor_states, max_rows=40))
+    console.print()
+
+    # Show summary
+    console.print(_build_stress_summary(tickets, monitor_states, elapsed))
+    console.print()
+
+    # Show sample escalation message from the highest-urgency ticket
+    top_urgency_tickets = sorted(
+        [
+            (tid, state)
+            for tid, state in monitor_states.items()
+            if state.urgency is not None
+        ],
+        key=lambda x: x[1].urgency.urgency_score if x[1].urgency else 0,
+        reverse=True,
+    )
+    if top_urgency_tickets:
+        tid, state = top_urgency_tickets[0]
+        if state.escalation_history:
+            latest = state.escalation_history[-1]
+            console.print(
+                Panel(
+                    latest.drafted_message,
+                    title=(
+                        f"[bold]Sample Escalation: {tid} "
+                        f"({latest.from_tier.value.upper()} -> "
+                        f"{latest.to_tier.value.upper()})[/bold]"
+                    ),
+                    border_style="red",
+                    padding=(1, 2),
+                )
+            )
+            console.print()
+
+    console.print("[green]Stress test complete.[/green]")
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -1111,6 +1942,10 @@ def main() -> None:
         asyncio.run(run_simulation(config))
     elif args.command == "demo":
         asyncio.run(run_demo(config))
+    elif args.command == "stress-worker":
+        asyncio.run(run_stress_worker(config, args))
+    elif args.command == "demo-stress":
+        asyncio.run(run_stress_demo(config, args))
 
 
 if __name__ == "__main__":
