@@ -1,0 +1,150 @@
+[
+  {
+    "id": "TKT-20001",
+    "subject": "Order not delivered - urgent",
+    "description": "My order ORD-7001 was supposed to arrive 3 days ago. I've been waiting and tracking shows no updates. This is unacceptable. I need this resolved immediately or I will cancel my account.",
+    "status": "open",
+    "priority": "high",
+    "requester": {
+      "id": "cust_201",
+      "name": "Sarah Chen",
+      "email": "sarah@enterprise.io",
+      "tier": "enterprise",
+      "account_created": "2021-08-15T00:00:00Z"
+    },
+    "assignee": "agent_alex",
+    "tags": ["shipping", "escalation"],
+    "created_at": "2026-03-03T08:00:00Z",
+    "updated_at": "2026-03-05T09:00:00Z",
+    "sla_deadline": "2026-03-05T12:00:00Z",
+    "custom_fields": {"order_id": "ORD-7001"},
+    "comments": [
+      {
+        "id": "comment_a1",
+        "author": "agent_alex",
+        "body": "Hi Sarah, we're looking into this for you.",
+        "created_at": "2026-03-03T10:00:00Z",
+        "public": true
+      },
+      {
+        "id": "comment_a2",
+        "author": "cust_201",
+        "body": "Still waiting. This is ridiculous. I've been a customer for years and this is the worst experience I've had.",
+        "created_at": "2026-03-04T14:00:00Z",
+        "public": true
+      }
+    ]
+  },
+  {
+    "id": "TKT-20002",
+    "subject": "Billing discrepancy on last invoice",
+    "description": "I was charged $450 instead of the agreed $350 on my latest invoice INV-3022. This is the second time this has happened. I'm very frustrated and considering switching providers.",
+    "status": "open",
+    "priority": "urgent",
+    "requester": {
+      "id": "cust_202",
+      "name": "Marcus Williams",
+      "email": "marcus@premium-corp.com",
+      "tier": "premium",
+      "account_created": "2023-02-20T00:00:00Z"
+    },
+    "assignee": "agent_jane",
+    "tags": ["billing", "overcharge"],
+    "created_at": "2026-03-04T11:00:00Z",
+    "updated_at": "2026-03-05T08:30:00Z",
+    "sla_deadline": "2026-03-05T15:00:00Z",
+    "custom_fields": {"invoice_id": "INV-3022"},
+    "comments": [
+      {
+        "id": "comment_b1",
+        "author": "agent_jane",
+        "body": "Marcus, I apologize for the inconvenience. Let me review your invoice.",
+        "created_at": "2026-03-04T12:00:00Z",
+        "public": true
+      },
+      {
+        "id": "comment_b2",
+        "author": "cust_202",
+        "body": "I'm disappointed this keeps happening. I need this fixed today.",
+        "created_at": "2026-03-05T08:30:00Z",
+        "public": true
+      }
+    ]
+  },
+  {
+    "id": "TKT-20003",
+    "subject": "Production API returning 500 errors since yesterday",
+    "description": "Our production integration with /api/v2/sync has been failing since yesterday morning. This is a critical issue causing revenue impact. We need this resolved asap - our entire pipeline is down.",
+    "status": "open",
+    "priority": "high",
+    "requester": {
+      "id": "cust_203",
+      "name": "Diana Park",
+      "email": "diana@bigtech.com",
+      "tier": "enterprise",
+      "account_created": "2022-01-10T00:00:00Z"
+    },
+    "assignee": "agent_mike",
+    "tags": ["api", "integration", "enterprise", "escalation"],
+    "created_at": "2026-03-04T06:00:00Z",
+    "updated_at": "2026-03-05T07:00:00Z",
+    "sla_deadline": "2026-03-05T10:00:00Z",
+    "custom_fields": {"integration_id": "int_501"},
+    "comments": [
+      {
+        "id": "comment_c1",
+        "author": "agent_mike",
+        "body": "Diana, we've identified the issue and our engineering team is working on it.",
+        "created_at": "2026-03-04T08:00:00Z",
+        "public": true
+      },
+      {
+        "id": "comment_c2",
+        "author": "cust_203",
+        "body": "It's been over 24 hours now. This is unacceptable for an enterprise account. We're losing revenue every hour this is down.",
+        "created_at": "2026-03-05T07:00:00Z",
+        "public": true
+      }
+    ]
+  },
+  {
+    "id": "TKT-20004",
+    "subject": "Feature request: bulk export",
+    "description": "Would be great to have a bulk export option for reports. Not urgent, just a nice-to-have for our workflow.",
+    "status": "open",
+    "priority": "low",
+    "requester": {
+      "id": "cust_204",
+      "name": "Tom Baker",
+      "email": "tom@smallbiz.com",
+      "tier": "standard",
+      "account_created": "2025-06-01T00:00:00Z"
+    },
+    "tags": ["feature_request"],
+    "created_at": "2026-03-02T15:00:00Z",
+    "updated_at": "2026-03-02T15:00:00Z",
+    "sla_deadline": "2026-03-07T15:00:00Z",
+    "custom_fields": {},
+    "comments": []
+  },
+  {
+    "id": "TKT-20005",
+    "subject": "Login issues after password reset",
+    "description": "I reset my password yesterday but still cannot log in. I've tried clearing cache and using incognito. Appreciate any help!",
+    "status": "new",
+    "priority": "normal",
+    "requester": {
+      "id": "cust_205",
+      "name": "Lisa Nguyen",
+      "email": "lisa@standard-co.com",
+      "tier": "standard",
+      "account_created": "2024-09-15T00:00:00Z"
+    },
+    "tags": ["authentication", "login"],
+    "created_at": "2026-03-05T06:00:00Z",
+    "updated_at": "2026-03-05T06:00:00Z",
+    "sla_deadline": "2026-03-06T06:00:00Z",
+    "custom_fields": {},
+    "comments": []
+  }
+]

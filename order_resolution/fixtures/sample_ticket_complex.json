@@ -1,0 +1,16 @@
+{
+  "id": "TKT-10099",
+  "subject": "Order #ORD-5500 - Multiple severe issues, requesting escalation",
+  "description": "To whom it may concern,\n\nI am writing on behalf of Nexus Corp (enterprise account ENT-4400) regarding order #ORD-5500, a bulk purchase of 25 units placed on February 15th.\n\nThe problems with this order are unacceptable:\n\n1. WRONG ITEMS: We ordered 10x Model-A Pro Monitors (27-inch, 4K) but received 10x Model-A Basic Monitors (24-inch, 1080p). These are completely different products. Item IDs: ITEM-501 through ITEM-510.\n\n2. DAMAGED ITEMS: 5 of the 10x USB-C Docking Stations (ITEM-511 through ITEM-515) arrived with cracked housings. The packaging was visibly crushed.\n\n3. MISSING ITEMS: 5x Wireless Keyboard + Mouse combos (ITEM-516 through ITEM-520) were listed on the packing slip but NOT in the boxes. They are simply missing.\n\n4. OVERCHARGE: We were charged $47,500.00 but the agreed enterprise pricing was $42,750.00. That is a $4,750.00 overcharge which violates our contract terms.\n\n5. LATE DELIVERY: The order was promised by February 20th (per our SLA) but didn't arrive until March 3rd -- 11 days late. This caused our new office setup to be delayed by two weeks, costing us significant productivity.\n\nThis is absolutely unacceptable for an enterprise account paying premium rates. We need:\n- Immediate replacement of all wrong monitors with the correct Model-A Pro units\n- Full refund for the damaged docking stations ($2,250.00)\n- Immediate shipment of the missing keyboard/mouse combos\n- The $4,750.00 overcharge corrected\n- Compensation for the late delivery\n- I want this escalated to a manager. If this is not resolved within 48 hours we will be reviewing our contract.\n\nRegards,\nMichael Torres\nIT Procurement Director, Nexus Corp",
+  "status": "new",
+  "priority": "urgent",
+  "requester": {
+    "id": "CUST-ENT-4400",
+    "name": "Michael Torres",
+    "email": "m.torres@nexuscorp.com",
+    "tier": "enterprise"
+  },
+  "tags": ["order_issue", "enterprise", "escalation", "multiple_problems", "urgent", "contract_violation"],
+  "created_at": "2026-03-04T08:00:00Z",
+  "updated_at": "2026-03-04T08:00:00Z"
+}
