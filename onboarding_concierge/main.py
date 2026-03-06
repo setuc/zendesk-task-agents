@@ -207,7 +207,8 @@ def create_mock_services(
 async def run_worker(config: OnboardingConfig, inject_failure: str | None = None):
     """Start the Temporal worker."""
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
     customer_data = _load_customer_fixture()
     zendesk, integration_test, email = create_mock_services(inject_failure)
@@ -258,7 +259,8 @@ async def start_onboarding(
 ):
     """Start a new onboarding workflow."""
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
 
     plan = _load_plan(customer_id, customer_name, plan_file)
@@ -291,7 +293,8 @@ async def start_onboarding(
 async def query_status(config: OnboardingConfig, workflow_id: str, query_type: str):
     """Query onboarding workflow state."""
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
     handle = client.get_workflow_handle(workflow_id)
 
@@ -362,7 +365,8 @@ async def send_checkin_response(
 ):
     """Send a customer check-in response signal."""
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
     handle = client.get_workflow_handle(workflow_id)
 
@@ -400,7 +404,8 @@ async def simulate_day(config: OnboardingConfig, workflow_id: str):
     )
 
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
     handle = client.get_workflow_handle(workflow_id)
 
@@ -606,7 +611,8 @@ async def run_demo(config: OnboardingConfig) -> None:
     _commentary("Starting Temporal worker with mock services (failure injected on second integration endpoint)...")
 
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
 
     zendesk = MockZendeskService()

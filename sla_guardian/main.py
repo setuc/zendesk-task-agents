@@ -235,7 +235,8 @@ def create_mock_services() -> tuple[MockZendeskService, MockSLARulesService]:
 async def run_monitor(config: SLAGuardianConfig, args: argparse.Namespace) -> None:
     """Start the Temporal worker and the SLA Guardian workflow."""
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
     zendesk, sla_rules = create_mock_services()
 
@@ -292,7 +293,8 @@ async def run_monitor(config: SLAGuardianConfig, args: argparse.Namespace) -> No
 async def query_status(config: SLAGuardianConfig, args: argparse.Namespace) -> None:
     """Query guardian or ticket monitor state."""
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
 
     if args.ticket_id:
@@ -372,7 +374,8 @@ async def query_status(config: SLAGuardianConfig, args: argparse.Namespace) -> N
 async def send_override(config: SLAGuardianConfig, args: argparse.Namespace) -> None:
     """Send a signal to a ticket monitor workflow."""
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
 
     workflow_id = f"ticket-monitor-{args.ticket_id}"
@@ -409,7 +412,8 @@ async def run_simulation(config: SLAGuardianConfig) -> None:
     and displays real-time status updates.
     """
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
 
     zendesk, sla_rules = create_mock_services()
@@ -795,7 +799,8 @@ async def run_demo(config: SLAGuardianConfig) -> None:
     # ---- Connect to Temporal ----
     console.print("[dim]Connecting to Temporal...[/dim]")
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
     console.print("[green]Connected to Temporal.[/green]")
 
@@ -1270,7 +1275,8 @@ async def run_stress_worker(
 
     worker = Worker(
         client=await Client.connect(
-            config.temporal_address, namespace=config.temporal_namespace
+            config.temporal_address, namespace=config.temporal_namespace,
+            data_converter=pydantic_data_converter,
         ),
         task_queue=task_queue,
         workflows=[SLAGuardianWorkflow, TicketMonitorWorkflow],
@@ -1657,7 +1663,8 @@ async def run_stress_demo(
     # Connect to Temporal
     console.print("[dim]Connecting to Temporal...[/dim]")
     client = await Client.connect(
-        config.temporal_address, namespace=config.temporal_namespace
+        config.temporal_address, namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
     )
     console.print("[green]Connected to Temporal.[/green]")
 
