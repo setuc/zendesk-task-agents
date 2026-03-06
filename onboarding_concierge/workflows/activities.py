@@ -8,7 +8,7 @@ from datetime import datetime, timedelta, timezone
 from temporalio import activity
 
 from .data_types import IntegrationTestResult
-from ...common.services.base import (
+from common.services.base import (
     EmailService,
     IntegrationTestService,
     ZendeskService,

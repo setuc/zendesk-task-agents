@@ -11,7 +11,7 @@ from .data_types import (
     SentimentReport,
     UrgencyClassification,
 )
-from ...common.services.base import SLARulesService, ZendeskService
+from common.services.base import SLARulesService, ZendeskService
 
 
 # ---------------------------------------------------------------------------

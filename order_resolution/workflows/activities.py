@@ -17,7 +17,7 @@ from .data_types import (
     ResolutionStep,
     StepResult,
 )
-from ...common.services.base import (
+from common.services.base import (
     OrderDBService,
     PaymentService,
     ShippingService,

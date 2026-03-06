@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 from dataclasses import dataclass
 
-from ...common.tui import console
+from common.tui import console
 
 
 @dataclass

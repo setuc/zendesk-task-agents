@@ -3,12 +3,12 @@ from __future__ import annotations
 from universal_computer.agents import Agent
 from universal_computer.agents.plugins.plugins import Plugins
 
-from ..common.services.base import (
+from common.services.base import (
     EmailService,
     IntegrationTestService,
     ZendeskService,
 )
-from ..common.tools.zendesk_tools import AddCommentTool, GetTicketTool, UpdateTicketTool
+from common.tools.zendesk_tools import AddCommentTool, GetTicketTool, UpdateTicketTool
 from .instructions import ONBOARDING_CONCIERGE_INSTRUCTIONS
 from .tools.diagnostic_tools import CheckEndpointTool, RunDiagnosticTool
 from .tools.report_tools import GenerateReportTool

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ...common.tui import console, BenchmarkReport
+from common.tui import console, BenchmarkReport
 from .uc_native_resume import benchmark_uc_resume
 from .temporal_resume import benchmark_temporal_resume
 

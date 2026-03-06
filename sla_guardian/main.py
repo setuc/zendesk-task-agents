@@ -20,9 +20,9 @@ from .workflows.data_types import (
     SLAStatus,
     TicketMonitorState,
 )
-from ..common.tui import console, WorkflowDashboard
+from common.tui import console, WorkflowDashboard
 
-from ..common.services.zendesk_mock import MockZendeskService
+from common.services.zendesk_mock import MockZendeskService
 from .services.sla_rules_mock import MockSLARulesService
 
 from rich.panel import Panel

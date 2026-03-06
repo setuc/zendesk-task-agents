@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from universal_computer.agents.tools import FunctionTool
 
-from ...common.services.base import PaymentService
+from common.services.base import PaymentService
 
 
 # ---------------------------------------------------------------------------

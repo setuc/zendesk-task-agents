@@ -4,13 +4,13 @@ from universal_computer.agents import Agent
 from universal_computer.agents.plugins.memory import Memory
 from universal_computer.agents.plugins.plugins import Plugins
 
-from ..common.services.base import (
+from common.services.base import (
     OrderDBService,
     PaymentService,
     ShippingService,
     ZendeskService,
 )
-from ..common.tools.zendesk_tools import AddCommentTool, GetTicketTool, UpdateTicketTool
+from common.tools.zendesk_tools import AddCommentTool, GetTicketTool, UpdateTicketTool
 from .instructions import ORDER_RESOLUTION_INSTRUCTIONS
 from .tools.order_tools import CreateReplacementOrderTool, GetOrderTool
 from .tools.payment_tools import GetTransactionTool, ProcessRefundTool

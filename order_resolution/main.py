@@ -13,11 +13,11 @@ from .config import OrderResolutionConfig
 from .workflows.workflow import OrderResolutionWorkflow
 from .workflows.activities import OrderResolutionActivities
 from .workflows.data_types import ApprovalDecision, WorkflowProgress, WorkflowState
-from ..common.tui import console, WorkflowDashboard, PlanDisplay, ApprovalPrompt, BenchmarkReport
+from common.tui import console, WorkflowDashboard, PlanDisplay, ApprovalPrompt, BenchmarkReport
 from .services.order_db_mock import MockOrderDBService
 from .services.shipping_mock import MockShippingService
 from .services.payment_mock import MockPaymentService
-from ..common.services.zendesk_mock import MockZendeskService
+from common.services.zendesk_mock import MockZendeskService
 
 
 # ======================================================================

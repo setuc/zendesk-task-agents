@@ -3,8 +3,8 @@ from __future__ import annotations
 from universal_computer.agents import Agent
 from universal_computer.agents.plugins.plugins import Plugins
 
-from ..common.services.base import SLARulesService, ZendeskService
-from ..common.tools.zendesk_tools import (
+from common.services.base import SLARulesService, ZendeskService
+from common.tools.zendesk_tools import (
     AddCommentTool,
     GetTicketTool,
     ListTicketsTool,

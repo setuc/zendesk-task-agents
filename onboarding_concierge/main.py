@@ -21,8 +21,8 @@ from .workflows.data_types import (
     OnboardingPlan,
     OnboardingState,
 )
-from ..common.tui import console, WorkflowDashboard
-from ..common.services.zendesk_mock import MockZendeskService
+from common.tui import console, WorkflowDashboard
+from common.services.zendesk_mock import MockZendeskService
 from .services.integration_test_mock import MockIntegrationTestService
 from .services.email_mock import MockEmailService
 
