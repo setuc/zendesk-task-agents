@@ -157,7 +157,15 @@ class SLAGuardianActivities:
         escalation signals in the description and comments, and tag metadata.
         """
         activity.logger.info(f"Classifying urgency for ticket {ticket_id}")
-        ticket = await self.zendesk.get_ticket(ticket_id)
+        try:
+            ticket = await self.zendesk.get_ticket(ticket_id)
+        except KeyError:
+            activity.logger.warning(f"Ticket {ticket_id} not found -- returning default urgency")
+            return UrgencyClassification(
+                ticket_id=ticket_id, original_priority="normal",
+                assessed_priority="normal", reasoning="Ticket not found in system",
+                urgency_score=0.3,
+            )
 
         original_priority = ticket.get("priority", "normal")
         description = ticket.get("description", "")
@@ -303,7 +311,14 @@ class SLAGuardianActivities:
         actionable insights for the support team.
         """
         activity.logger.info(f"Analyzing sentiment for ticket {ticket_id}")
-        ticket = await self.zendesk.get_ticket(ticket_id)
+        try:
+            ticket = await self.zendesk.get_ticket(ticket_id)
+        except KeyError:
+            activity.logger.warning(f"Ticket {ticket_id} not found -- returning default sentiment")
+            return SentimentReport(
+                ticket_id=ticket_id, overall_sentiment="neutral",
+                frustration_trajectory="stable", escalation_risk=0.0,
+            )
 
         description = ticket.get("description", "")
         comments = ticket.get("comments", [])
@@ -438,7 +453,11 @@ class SLAGuardianActivities:
         activity.logger.info(
             f"Drafting escalation for ticket {ticket_id}: {from_tier} -> {to_tier}"
         )
-        ticket = await self.zendesk.get_ticket(ticket_id)
+        try:
+            ticket = await self.zendesk.get_ticket(ticket_id)
+        except KeyError:
+            activity.logger.warning(f"Ticket {ticket_id} not found in mock -- using fallback")
+            ticket = {"id": ticket_id, "subject": "Unknown", "description": "", "priority": "normal", "status": "open", "requester": {}, "comments": [], "tags": []}
 
         subject = ticket.get("subject", "Unknown")
         description = ticket.get("description", "")
@@ -661,14 +680,21 @@ class SLAGuardianActivities:
         if to_tier in ("l3", "manager"):
             updates["priority"] = "urgent"
 
-        await self.zendesk.update_ticket(ticket_id, updates)
+        try:
+            await self.zendesk.update_ticket(ticket_id, updates)
+        except KeyError:
+            activity.logger.warning(f"Ticket {ticket_id} not found for update -- skipping")
 
         # Add internal escalation note
-        comment_result = await self.zendesk.add_comment(
-            ticket_id,
-            body=message,
-            public=False,
-        )
+        comment_result: dict = {}
+        try:
+            comment_result = await self.zendesk.add_comment(
+                ticket_id,
+                body=message,
+                public=False,
+            )
+        except KeyError:
+            activity.logger.warning(f"Ticket {ticket_id} not found for comment -- skipping")
 
         assigned_team = _TEAM_ASSIGNMENTS.get(to_tier, "Support Team")
         expected_response = _RESPONSE_TIMES.get(to_tier, "within 4 hours")
