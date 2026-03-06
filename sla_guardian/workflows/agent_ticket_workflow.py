@@ -58,7 +58,7 @@ class AgentTicketWorkflow:
 
         # ---- Initialise state from metadata ----
         self._state.ticket_id = ticket_id
-        self._state.started_at = datetime.now(timezone.utc).isoformat()
+        self._state.started_at = workflow.now().isoformat()
 
         if ticket_metadata:
             self._state.customer_name = ticket_metadata.get("customer_name", "")
@@ -103,5 +103,5 @@ class AgentTicketWorkflow:
             )
 
         # ---- Finalise ----
-        self._state.completed_at = datetime.now(timezone.utc).isoformat()
+        self._state.completed_at = workflow.now().isoformat()
         return self._state
