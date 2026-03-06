@@ -16,16 +16,25 @@ from .workflows.guardian_workflow import SLAGuardianWorkflow
 from .workflows.ticket_monitor_workflow import TicketMonitorWorkflow
 from .workflows.activities import SLAGuardianActivities
 from .workflows.data_types import (
+    AgentResolution,
+    AgentStatus,
+    AgentTicketState,
     EscalationTier,
     GuardianState,
     SLAStatus,
     TicketMonitorState,
 )
+from .workflows.agent_ticket_workflow import AgentTicketWorkflow
+from .workflows.agent_activities import AgentTicketActivities
 from .fixtures.ticket_generator import generate_ticket_batch, get_ticket_ids
 from common.tui import console, WorkflowDashboard
 
 from common.services.zendesk_mock import MockZendeskService
 from .services.sla_rules_mock import MockSLARulesService
+
+from order_resolution.services.order_db_mock import MockOrderDBService
+from order_resolution.services.payment_mock import MockPaymentService
+from order_resolution.services.shipping_mock import MockShippingService
 
 from rich.panel import Panel
 from rich.table import Table
@@ -210,6 +219,61 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=3,
         help="SLA deadline offset in minutes from now (default: 3)",
+    )
+
+    # live-inject command - inject tickets for live 3-terminal demo
+    inject_parser = subparsers.add_parser(
+        "live-inject", help="Inject tickets for live demo"
+    )
+    inject_parser.add_argument(
+        "--tickets", type=int, default=100,
+        help="Number of tickets to inject (default: 100)",
+    )
+    inject_parser.add_argument(
+        "--rate", type=float, default=2.0,
+        help="Tickets per second injection rate (default: 2.0)",
+    )
+    inject_parser.add_argument(
+        "--seed", type=int, default=42,
+        help="Random seed for deterministic generation (default: 42)",
+    )
+    inject_parser.add_argument(
+        "--sla-offset", type=int, default=5,
+        help="SLA deadline offset in minutes from now (default: 5)",
+    )
+
+    # live-worker command - agent worker for live 3-terminal demo
+    live_worker_parser = subparsers.add_parser(
+        "live-worker", help="Agent worker for live demo"
+    )
+    live_worker_parser.add_argument(
+        "--tickets", type=int, default=100,
+        help="Number of tickets to pre-generate (default: 100)",
+    )
+    live_worker_parser.add_argument(
+        "--seed", type=int, default=42,
+        help="Random seed for deterministic generation (default: 42)",
+    )
+    live_worker_parser.add_argument(
+        "--sla-offset", type=int, default=5,
+        help="SLA deadline offset in minutes from now (default: 5)",
+    )
+    live_worker_parser.add_argument(
+        "--mock", action="store_true", default=True,
+        help="Use mock agent (default)",
+    )
+    live_worker_parser.add_argument(
+        "--live", action="store_true",
+        help="Use real UC agent (requires OPENAI_API_KEY)",
+    )
+
+    # live-dashboard command - live ticket dashboard for 3-terminal demo
+    dashboard_parser = subparsers.add_parser(
+        "live-dashboard", help="Live ticket dashboard"
+    )
+    dashboard_parser.add_argument(
+        "--refresh", type=float, default=2.0,
+        help="Refresh interval in seconds (default: 2.0)",
     )
 
     return parser.parse_args()
@@ -1931,6 +1995,521 @@ async def run_stress_demo(
 
 
 # ---------------------------------------------------------------------------
+# Category helper for live demo commands
+# ---------------------------------------------------------------------------
+
+_SOLVABLE_CATEGORIES = {"billing", "shipping", "account", "password"}
+_UNSOLVABLE_CATEGORIES = {"technical", "crisis", "legal", "feature"}
+
+
+def _infer_category(tags: list[str]) -> str:
+    """Infer a ticket category from its tags."""
+    tag_set = {t.lower() for t in tags}
+    if tag_set & {"escalation", "urgent", "crisis"}:
+        return "crisis"
+    if "billing" in tag_set:
+        return "billing"
+    if tag_set & {"shipping", "delivery"}:
+        return "shipping"
+    if tag_set & {"api", "integration", "technical"}:
+        return "technical"
+    if "feature_request" in tag_set:
+        return "feature"
+    if tag_set & {"authentication", "account", "password"}:
+        return "account"
+    if "legal" in tag_set:
+        return "legal"
+    return "general"
+
+
+def _is_solvable(category: str) -> bool:
+    """Return True if the category is one the mock agent can resolve."""
+    return category in _SOLVABLE_CATEGORIES
+
+
+# ---------------------------------------------------------------------------
+# live-inject command  (Terminal 3)
+# ---------------------------------------------------------------------------
+
+
+async def run_live_inject(
+    config: SLAGuardianConfig,
+    args: argparse.Namespace,
+) -> None:
+    """Inject tickets into Temporal as AgentTicketWorkflow instances."""
+    ticket_count = args.tickets
+    rate = args.rate
+    seed = args.seed
+    sla_offset = args.sla_offset
+    task_queue = "sla-guardian-live"
+
+    console.print()
+    console.rule("[bold magenta]SLA Guardian -- Live Inject[/bold magenta]")
+    console.print()
+    console.print(
+        f"[dim]Generating {ticket_count} tickets  seed={seed}  "
+        f"SLA offset={sla_offset}min  rate={rate} tkt/s[/dim]"
+    )
+
+    tickets = generate_ticket_batch(
+        ticket_count, seed=seed, sla_offset_minutes=sla_offset
+    )
+    console.print(f"[green]Generated {len(tickets)} tickets.[/green]")
+    console.print()
+
+    client = await Client.connect(
+        config.temporal_address,
+        namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
+    )
+
+    resolved_count = 0
+    escalated_count = 0
+
+    for i, ticket in enumerate(tickets, 1):
+        ticket_id = ticket["id"]
+        subject = ticket.get("subject", "")[:50]
+        customer_name = ticket.get("requester", {}).get("name", "Unknown")
+        tier = ticket.get("requester", {}).get("tier", "standard")
+        priority = ticket.get("priority", "normal")
+        tags = ticket.get("tags", [])
+        category = _infer_category(tags)
+        solvable = _is_solvable(category)
+
+        metadata = {
+            "customer_name": customer_name,
+            "customer_tier": tier,
+            "priority": priority,
+            "category": category,
+            "subject": ticket.get("subject", ""),
+        }
+
+        await client.start_workflow(
+            AgentTicketWorkflow.run,
+            args=[ticket_id, metadata],
+            id=f"agent-ticket-{ticket_id}",
+            task_queue=task_queue,
+        )
+
+        # Color the output
+        tier_colors = {"enterprise": "cyan", "premium": "yellow", "standard": "dim"}
+        pri_colors = {"urgent": "red", "high": "yellow", "normal": "white", "low": "dim"}
+        solvable_str = "[green]solvable[/green]" if solvable else "[red]unsolvable[/red]"
+        tier_color = tier_colors.get(tier, "white")
+        pri_color = pri_colors.get(priority, "white")
+
+        console.print(
+            f"  [bold][INJECT][/bold] {ticket_id} | "
+            f"{subject} | "
+            f"[{tier_color}]{tier}[/{tier_color}] | "
+            f"[{pri_color}]{priority.upper()}[/{pri_color}] | "
+            f"{solvable_str}"
+        )
+
+        if solvable:
+            resolved_count += 1
+        else:
+            escalated_count += 1
+
+        if i < len(tickets):
+            await asyncio.sleep(1.0 / rate)
+
+    console.print()
+    console.rule("[bold magenta]Injection Complete[/bold magenta]")
+    summary_table = Table(
+        show_header=False,
+        box=box.SIMPLE,
+        padding=(0, 2),
+    )
+    summary_table.add_column("Label", style="bold")
+    summary_table.add_column("Value")
+    summary_table.add_row("Total injected", str(len(tickets)))
+    summary_table.add_row("Expected solvable", f"[green]{resolved_count}[/green]")
+    summary_table.add_row("Expected unsolvable", f"[red]{escalated_count}[/red]")
+    summary_table.add_row("Task queue", task_queue)
+    console.print(summary_table)
+
+
+# ---------------------------------------------------------------------------
+# live-worker command  (Terminal 2)
+# ---------------------------------------------------------------------------
+
+
+async def run_live_worker(
+    config: SLAGuardianConfig,
+    args: argparse.Namespace,
+) -> None:
+    """Start the Temporal worker for AgentTicketWorkflow with live activity log."""
+    ticket_count = args.tickets
+    seed = args.seed
+    sla_offset = args.sla_offset
+    use_real_agent = getattr(args, "live", False)
+    task_queue = "sla-guardian-live"
+
+    console.print()
+    console.rule("[bold blue]SLA Guardian -- Live Agent Worker[/bold blue]")
+    console.print()
+
+    # Generate tickets with the same seed as the injector
+    console.print(
+        f"[dim]Pre-generating {ticket_count} tickets  seed={seed}  "
+        f"SLA offset={sla_offset}min[/dim]"
+    )
+    tickets = generate_ticket_batch(
+        ticket_count, seed=seed, sla_offset_minutes=sla_offset
+    )
+
+    # Load into mock Zendesk
+    zendesk = MockZendeskService()
+    _load_tickets_into_mock(zendesk, tickets)
+    console.print(f"[blue]Loaded {len(tickets)} tickets into mock Zendesk.[/blue]")
+
+    # Create mock services
+    order_db = MockOrderDBService()
+    payment = MockPaymentService()
+    shipping = MockShippingService()
+    memory_store: dict = {}
+
+    activities = AgentTicketActivities(
+        zendesk=zendesk,
+        order_db=order_db,
+        payment=payment,
+        shipping=shipping,
+        memory_store=memory_store,
+        use_real_agent=use_real_agent,
+    )
+
+    client = await Client.connect(
+        config.temporal_address,
+        namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
+    )
+
+    worker = Worker(
+        client,
+        task_queue=task_queue,
+        workflows=[AgentTicketWorkflow],
+        activities=[activities.process_ticket],
+        max_concurrent_activities=50,
+        max_concurrent_workflow_tasks=50,
+    )
+
+    # Show config banner
+    mode_str = "[red]LIVE UC Agent[/red]" if use_real_agent else "[green]Mock Agent[/green]"
+    banner = Table(
+        show_header=False,
+        box=box.ROUNDED,
+        border_style="blue",
+        padding=(0, 2),
+        title="[bold]Worker Configuration[/bold]",
+        title_style="bold blue",
+    )
+    banner.add_column("Key", style="bold")
+    banner.add_column("Value")
+    banner.add_row("Task queue", task_queue)
+    banner.add_row("Agent mode", mode_str)
+    banner.add_row("Tickets loaded", str(len(tickets)))
+    banner.add_row("Max concurrent", "50 activities / 50 workflows")
+    console.print(banner)
+    console.print()
+    console.print("[bold green]Worker started. Waiting for workflows...[/bold green]")
+    console.print("[dim]Agent activity will appear below as tickets are processed.[/dim]")
+    console.print("[green]Press Ctrl+C to stop.[/green]")
+    console.print()
+
+    # Run worker + background poller concurrently
+    async def _poller() -> None:
+        """Background poller that prints condensed agent activity lines."""
+        seen: set[str] = set()
+        agent_counter = 0
+        # Give the worker a moment to start
+        await asyncio.sleep(2.0)
+
+        while True:
+            try:
+                new_completed: list[tuple[str, AgentTicketState]] = []
+                async for wf in client.list_workflows(
+                    query=f"TaskQueue='{task_queue}'"
+                ):
+                    if wf.id in seen:
+                        continue
+                    try:
+                        handle = client.get_workflow_handle(wf.id)
+                        state: AgentTicketState = await handle.query(
+                            AgentTicketWorkflow.get_state
+                        )
+                        if state.agent_status in (
+                            AgentStatus.RESOLVED,
+                            AgentStatus.ESCALATED,
+                            AgentStatus.FAILED,
+                        ):
+                            seen.add(wf.id)
+                            new_completed.append((wf.id, state))
+                    except Exception:
+                        pass
+
+                for _wf_id, state in new_completed:
+                    agent_counter += 1
+                    label = f"A-{agent_counter:02d}"
+
+                    # Build tool chain string
+                    tool_chain = ""
+                    if state.resolution and state.resolution.tool_calls:
+                        tool_names = [
+                            tc.tool_name.split(".")[-1]
+                            for tc in state.resolution.tool_calls
+                        ]
+                        tool_chain = " > ".join(tool_names)
+
+                    # Determine color and outcome
+                    if state.agent_status == AgentStatus.RESOLVED:
+                        color = "green"
+                        summary = state.resolution.resolution_summary[:60] if state.resolution else "resolved"
+                        outcome = "RESOLVED"
+                    elif state.agent_status == AgentStatus.ESCALATED:
+                        color = "red"
+                        team = state.resolution.escalation_team if state.resolution else "unknown"
+                        outcome = f"ESCALATED ({team})"
+                        summary = ""
+                    else:
+                        color = "yellow"
+                        outcome = "FAILED"
+                        summary = ""
+
+                    proc_time = ""
+                    if state.resolution and state.resolution.processing_time_ms:
+                        proc_time = f" [{state.resolution.processing_time_ms:.1f}ms]"
+
+                    mem_flag = ""
+                    if state.resolution and state.resolution.memory_hit:
+                        mem_flag = " [yellow]*MEM*[/yellow]"
+
+                    console.print(
+                        f"  [{color}][{label}][/{color}] "
+                        f"{state.ticket_id} {state.category} > "
+                        f"{tool_chain} > "
+                        f"[{color}]{outcome}[/{color}]"
+                        f"{' -- ' + summary if summary else ''}"
+                        f"{proc_time}{mem_flag}"
+                    )
+
+            except Exception:
+                pass
+
+            await asyncio.sleep(2.0)
+
+    try:
+        await asyncio.gather(
+            worker.run(),
+            _poller(),
+        )
+    except asyncio.CancelledError:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# live-dashboard command  (Terminal 1)
+# ---------------------------------------------------------------------------
+
+_LIVE_STATUS_STYLE: dict[str, str] = {
+    "queued": "dim",
+    "investigating": "yellow",
+    "resolving": "cyan",
+    "escalating": "bold yellow",
+    "resolved": "green",
+    "escalated": "bold red",
+    "failed": "red",
+}
+
+_LIVE_TIER_STYLE: dict[str, str] = {
+    "enterprise": "bold cyan",
+    "premium": "bold yellow",
+    "standard": "dim",
+}
+
+_LIVE_PRIORITY_STYLE: dict[str, str] = {
+    "urgent": "bold red",
+    "high": "bold yellow",
+    "normal": "white",
+    "low": "dim",
+}
+
+
+async def _poll_live_states(
+    client: Client,
+    task_queue: str,
+) -> dict[str, AgentTicketState]:
+    """Query all workflows on the live task queue and return their states."""
+    states: dict[str, AgentTicketState] = {}
+    async for wf in client.list_workflows(
+        query=f"TaskQueue='{task_queue}'"
+    ):
+        try:
+            handle = client.get_workflow_handle(wf.id)
+            state: AgentTicketState = await handle.query(
+                AgentTicketWorkflow.get_state
+            )
+            states[wf.id] = state
+        except Exception:
+            pass
+    return states
+
+
+def _build_live_table(states: dict[str, AgentTicketState]) -> Table:
+    """Build a Rich Table from the collected workflow states."""
+    table = Table(
+        show_header=True,
+        header_style="bold white on dark_blue",
+        border_style="blue",
+        box=box.SIMPLE_HEAVY,
+        expand=True,
+        title="[bold]SLA Guardian -- Live Agent Dashboard[/bold]",
+        title_style="bold cyan",
+    )
+    table.add_column("Ticket", style="bold", width=12)
+    table.add_column("Customer", width=18)
+    table.add_column("Tier", width=10)
+    table.add_column("Priority", width=8)
+    table.add_column("Category", width=12)
+    table.add_column("Status", width=14)
+    table.add_column("Resolution", ratio=2)
+    table.add_column("Tools", width=5, justify="center")
+    table.add_column("Mem", width=4, justify="center")
+    table.add_column("Time", width=8, justify="right")
+
+    # Sort: in-progress first, then by ticket_id
+    def _sort_key(item: tuple[str, AgentTicketState]) -> tuple[int, str]:
+        s = item[1]
+        order = {
+            AgentStatus.INVESTIGATING: 0,
+            AgentStatus.RESOLVING: 1,
+            AgentStatus.ESCALATING: 2,
+            AgentStatus.QUEUED: 3,
+            AgentStatus.RESOLVED: 4,
+            AgentStatus.ESCALATED: 5,
+            AgentStatus.FAILED: 6,
+        }
+        return (order.get(s.agent_status, 9), s.ticket_id)
+
+    sorted_states = sorted(states.items(), key=_sort_key)
+
+    # Counters for stats
+    total = len(sorted_states)
+    resolved = 0
+    escalated = 0
+    working = 0
+    queued = 0
+    failed = 0
+    memory_hits = 0
+    total_time_ms = 0.0
+    timed_count = 0
+
+    for _wf_id, state in sorted_states:
+        # Count stats
+        if state.agent_status == AgentStatus.RESOLVED:
+            resolved += 1
+        elif state.agent_status == AgentStatus.ESCALATED:
+            escalated += 1
+        elif state.agent_status == AgentStatus.QUEUED:
+            queued += 1
+        elif state.agent_status == AgentStatus.FAILED:
+            failed += 1
+        else:
+            working += 1
+
+        # Resolution summary
+        resolution_text = ""
+        tool_count = "0"
+        mem_mark = ""
+        time_str = ""
+
+        if state.resolution:
+            res = state.resolution
+            resolution_text = res.resolution_summary[:55] + (
+                "..." if len(res.resolution_summary) > 55 else ""
+            ) if res.resolution_summary else ""
+            tool_count = str(len(res.tool_calls))
+            if res.memory_hit:
+                mem_mark = "[yellow]Y[/yellow]"
+                memory_hits += 1
+            if res.processing_time_ms:
+                time_str = f"{res.processing_time_ms:.0f}ms"
+                total_time_ms += res.processing_time_ms
+                timed_count += 1
+
+        tier_style = _LIVE_TIER_STYLE.get(state.customer_tier, "white")
+        pri_style = _LIVE_PRIORITY_STYLE.get(state.priority, "white")
+        status_style = _LIVE_STATUS_STYLE.get(state.agent_status.value, "white")
+
+        table.add_row(
+            state.ticket_id,
+            state.customer_name[:17],
+            f"[{tier_style}]{state.customer_tier}[/{tier_style}]",
+            f"[{pri_style}]{state.priority.upper()}[/{pri_style}]",
+            state.category,
+            f"[{status_style}]{state.agent_status.value.upper()}[/{status_style}]",
+            resolution_text,
+            tool_count,
+            mem_mark,
+            time_str,
+        )
+
+    # Stats bar
+    avg_time = f"{total_time_ms / timed_count:.0f}ms" if timed_count else "--"
+    stats_text = (
+        f"  [bold]Total:[/bold] {total}  |  "
+        f"[green]Resolved:[/green] {resolved}  |  "
+        f"[red]Escalated:[/red] {escalated}  |  "
+        f"[yellow]Working:[/yellow] {working}  |  "
+        f"[dim]Queued:[/dim] {queued}  |  "
+        f"[red]Failed:[/red] {failed}  |  "
+        f"[bold]Avg Time:[/bold] {avg_time}  |  "
+        f"[yellow]Memory Hits:[/yellow] {memory_hits}"
+    )
+    table.caption = stats_text
+    table.caption_style = ""
+
+    return table
+
+
+async def run_live_dashboard(
+    config: SLAGuardianConfig,
+    args: argparse.Namespace,
+) -> None:
+    """Run the live dashboard that polls Temporal and shows a Rich table."""
+    refresh = args.refresh
+    task_queue = "sla-guardian-live"
+
+    client = await Client.connect(
+        config.temporal_address,
+        namespace=config.temporal_namespace,
+        data_converter=pydantic_data_converter,
+    )
+
+    console.print()
+    console.print(
+        f"[bold cyan]Live Dashboard[/bold cyan] polling task queue "
+        f"[bold]'{task_queue}'[/bold] every {refresh}s"
+    )
+    console.print("[green]Press Ctrl+C to stop.[/green]")
+    console.print()
+
+    with Live(
+        _build_live_table({}),
+        console=console,
+        refresh_per_second=0.5,
+        vertical_overflow="crop",
+    ) as live:
+        while True:
+            try:
+                states = await _poll_live_states(client, task_queue)
+                live.update(_build_live_table(states))
+            except Exception as exc:
+                console.print(f"[red]Poll error: {exc}[/red]")
+            await asyncio.sleep(refresh)
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -1953,6 +2532,12 @@ def main() -> None:
         asyncio.run(run_stress_worker(config, args))
     elif args.command == "demo-stress":
         asyncio.run(run_stress_demo(config, args))
+    elif args.command == "live-inject":
+        asyncio.run(run_live_inject(config, args))
+    elif args.command == "live-worker":
+        asyncio.run(run_live_worker(config, args))
+    elif args.command == "live-dashboard":
+        asyncio.run(run_live_dashboard(config, args))
 
 
 if __name__ == "__main__":
