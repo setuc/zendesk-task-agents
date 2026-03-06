@@ -78,7 +78,7 @@ class SLAGuardianWorkflow:
         )
 
         self._state.scan_count += 1
-        self._state.last_scan = datetime.now(timezone.utc)
+        self._state.last_scan = workflow.now()
 
         # Step 2: For each new ticket, start a child TicketMonitorWorkflow
         from .ticket_monitor_workflow import TicketMonitorWorkflow
@@ -96,7 +96,7 @@ class SLAGuardianWorkflow:
                 else:
                     sla_deadline_iso = sla_deadline_raw.isoformat()
             else:
-                default_deadline = datetime.now(timezone.utc) + timedelta(hours=24)
+                default_deadline = workflow.now() + timedelta(hours=24)
                 sla_deadline_iso = default_deadline.isoformat()
 
             # Start child workflow for this ticket (fire-and-forget)
