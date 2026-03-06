@@ -83,3 +83,56 @@ class GuardianState(BaseModel):
     scan_count: int = 0
     last_scan: datetime | None = None
     total_escalations: int = 0
+
+
+class AgentStatus(str, Enum):
+    QUEUED = "queued"
+    INVESTIGATING = "investigating"
+    RESOLVING = "resolving"
+    ESCALATING = "escalating"
+    RESOLVED = "resolved"
+    ESCALATED = "escalated"
+    FAILED = "failed"
+
+
+class ToolCall(BaseModel):
+    tool_name: str
+    args_summary: str = ""
+    result_summary: str = ""
+    duration_ms: float = 0.0
+
+
+class MemoryHit(BaseModel):
+    matched_ticket_id: str = ""
+    pattern: str = ""
+    suggested_action: str = ""
+
+
+class AgentResolution(BaseModel):
+    ticket_id: str
+    status: AgentStatus = AgentStatus.QUEUED
+    solvable: bool = False
+    resolution_type: str = ""
+    resolution_summary: str = ""
+    tool_calls: list[ToolCall] = Field(default_factory=list)
+    memory_hit: MemoryHit | None = None
+    memory_written: str = ""
+    escalation_reason: str = ""
+    escalation_team: str = ""
+    customer_message: str = ""
+    processing_time_ms: float = 0.0
+    sandbox_commands: list[str] = Field(default_factory=list)
+    sandbox_output: str = ""
+
+
+class AgentTicketState(BaseModel):
+    ticket_id: str
+    customer_name: str = ""
+    customer_tier: str = "standard"
+    priority: str = "normal"
+    category: str = ""
+    subject: str = ""
+    agent_status: AgentStatus = AgentStatus.QUEUED
+    resolution: AgentResolution | None = None
+    started_at: str = ""
+    completed_at: str = ""
