@@ -235,11 +235,11 @@ class OrderResolutionActivities:
         financial_impact = 0.0
         for iss in issues:
             if iss.issue_type == IssueType.OVERCHARGE:
-                amt = re.search(r"Overcharge of \$([\d.]+)", iss.description)
+                amt = re.search(r"Overcharge of \$(\d+\.\d{2})", iss.description)
                 if amt:
                     financial_impact += float(amt.group(1))
             if iss.issue_type == IssueType.DAMAGED_ITEM:
-                price_match = re.search(r"\$([\d.]+)", iss.description)
+                price_match = re.search(r"\$(\d+\.\d{2})", iss.description)
                 if price_match:
                     financial_impact += float(price_match.group(1))
 
@@ -647,6 +647,14 @@ class OrderResolutionActivities:
                     "Store credit for delivery delay: standard compensation "
                     "per SLA policy."
                 )
+
+        # Reorder: refunds and credits first, then return labels, then
+        # replacements last.  This ensures that if a replacement fails the saga
+        # has already-completed refund steps to compensate (better demo).
+        action_priority = {"refund": 0, "credit": 1, "return_label": 2, "replacement": 3}
+        steps.sort(key=lambda s: action_priority.get(s.action, 99))
+        for i, step in enumerate(steps):
+            step.step_id = f"step-{i + 1}"
 
         total_cost = sum(s.estimated_cost for s in steps)
         needs_approval = total_cost > 50.0 or any(s.requires_approval for s in steps)

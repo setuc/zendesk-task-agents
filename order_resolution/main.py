@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 
 from .config import OrderResolutionConfig
@@ -137,7 +138,7 @@ def create_mock_services(
 
 async def run_worker(config: OrderResolutionConfig, inject_failure: str | None = None):
     """Start the Temporal worker."""
-    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace)
+    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace, data_converter=pydantic_data_converter)
     zendesk, order_db, shipping, payment = create_mock_services(inject_failure)
 
     activities = OrderResolutionActivities(
@@ -174,7 +175,7 @@ async def run_worker(config: OrderResolutionConfig, inject_failure: str | None =
 
 async def start_workflow(config: OrderResolutionConfig, ticket_id: str, workflow_id: str | None = None):
     """Start a new order resolution workflow."""
-    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace)
+    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace, data_converter=pydantic_data_converter)
 
     wf_id = workflow_id or f"order-resolution-{ticket_id}"
 
@@ -195,7 +196,7 @@ async def start_workflow(config: OrderResolutionConfig, ticket_id: str, workflow
 
 async def send_approval(config: OrderResolutionConfig, workflow_id: str, approved: bool, notes: str = ""):
     """Send approval/rejection signal."""
-    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace)
+    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace, data_converter=pydantic_data_converter)
     handle = client.get_workflow_handle(workflow_id)
 
     decision = ApprovalDecision(approved=approved, reviewer="cli_user", notes=notes)
@@ -207,7 +208,7 @@ async def send_approval(config: OrderResolutionConfig, workflow_id: str, approve
 
 async def query_workflow(config: OrderResolutionConfig, workflow_id: str, query_type: str):
     """Query workflow state."""
-    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace)
+    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace, data_converter=pydantic_data_converter)
     handle = client.get_workflow_handle(workflow_id)
 
     if query_type == "state":
@@ -340,7 +341,7 @@ async def run_demo(config: OrderResolutionConfig, ticket_id: str) -> None:
 
     # --- Start worker in background ---
     _commentary("Starting Temporal worker in background...")
-    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace)
+    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace, data_converter=pydantic_data_converter)
     zendesk, order_db, shipping, payment = create_mock_services()
 
     activities = OrderResolutionActivities(
@@ -644,7 +645,7 @@ async def run_demo_saga(config: OrderResolutionConfig, ticket_id: str) -> None:
     console.print()
 
     # --- Start worker with failure injection ---
-    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace)
+    client = await Client.connect(config.temporal_address, namespace=config.temporal_namespace, data_converter=pydantic_data_converter)
     zendesk, order_db, shipping, payment = create_mock_services(
         inject_replacement_failure=True,
     )

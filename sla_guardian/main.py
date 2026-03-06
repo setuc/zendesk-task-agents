@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 
 from .config import SLAGuardianConfig
