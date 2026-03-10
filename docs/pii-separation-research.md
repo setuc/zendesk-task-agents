@@ -244,6 +244,77 @@ async def erase_customer(customer_id: str):
 
 ---
 
+## PayloadCodec Coverage (Verified from SDK Source)
+
+**Source:** `.venv/.../temporalio/bridge/_visitor.py` (PayloadVisitor base class)
+**Source:** `.venv/.../temporalio/worker/_workflow.py` (_CommandAwarePayloadCodec, _command_aware_visitor)
+
+The PayloadCodec runs **outside the workflow sandbox, on the worker process**. A `PayloadVisitor` traverses ALL protobuf messages (both incoming activations and outgoing commands) and applies encode/decode to every payload it finds.
+
+### Complete Coverage Map
+
+| Event Type | Codec Runs? | Visitor Method | Direction |
+|-----------|-------------|---------------|-----------|
+| Workflow started (inputs) | YES | `workflow_activation_InitializeWorkflow` | decode (incoming) |
+| Workflow completed (result) | YES | `workflow_commands_CompleteWorkflowExecution` | encode (outgoing) |
+| Workflow failed (error) | YES | `workflow_commands_FailWorkflowExecution` | encode (outgoing) |
+| Activity scheduled (inputs) | YES | `workflow_commands_ScheduleActivity` | encode (outgoing) |
+| Activity completed (result) | YES | `activity_result_Success` via `ResolveActivity` | decode (incoming) |
+| Activity failed (error) | YES | `activity_result_Failure` via `ResolveActivity` | decode (incoming) |
+| Local activity scheduled | YES | `workflow_commands_ScheduleLocalActivity` | encode (outgoing) |
+| Signal received | YES | `workflow_activation_SignalWorkflow` | decode (incoming) |
+| Signal sent to external | YES | `workflow_commands_SignalExternalWorkflowExecution` | encode (outgoing) |
+| Query response | YES | `workflow_commands_QuerySuccess` | encode (outgoing) |
+| Child workflow started | YES | `workflow_commands_StartChildWorkflowExecution` | encode (outgoing) |
+| Child workflow result | YES | `child_workflow_Success` via `ResolveChildWorkflowExecution` | decode (incoming) |
+| Memo | YES | `temporal_api_common_v1_Memo` | both |
+| Search attributes | YES | `temporal_api_common_v1_SearchAttributes` | both |
+| Failure payloads | YES | `temporal_api_failure_v1_Failure` | both |
+
+**Key finding:** The codec catches EVERY payload in the Temporal data path. Nothing escapes -- including signal data, error messages, query responses, and memos. This means a PII-redacting codec is comprehensive without any additional interception points.
+
+### How the Codec Is Applied
+
+```
+Workflow sandbox produces raw payload (PayloadConverter → JSON bytes)
+    ↓
+Worker's _CommandAwarePayloadCodec wraps the payload
+    ↓
+PayloadCodec.encode() runs ON THE WORKER (outside sandbox, CAN call Redis)
+    ↓
+Encoded payload sent to Temporal server (PII replaced with refs)
+    ↓
+Temporal server stores sanitized payload in event history
+    ↓
+Another worker receives the payload from task queue
+    ↓
+PayloadCodec.decode() runs ON THAT WORKER (resolves refs from Redis)
+    ↓
+Decoded payload passed to activity/workflow (full PII restored)
+```
+
+### Latency Impact
+
+| Operation | Redis Calls | Estimated Latency |
+|-----------|------------|-------------------|
+| Activity scheduled (encode) | 1 SET per PII field (or 1 MSET for all fields in payload) | <1ms |
+| Activity completed (encode) | 1 SET per PII field (or 1 MSET) | <1ms |
+| Activity input decoded | 1 MGET for all refs in payload | <1ms |
+| Query response (encode) | 1 SET per PII field (or 1 MSET) | <1ms |
+| Signal decoded | 1 MGET for all refs | <1ms |
+
+For OrderResolution workflow (8 activities): ~16 Redis round-trips total, ~16ms overhead across the entire workflow lifetime.
+
+**MSET/MGET explanation:** Redis supports batch operations. `MSET key1 val1 key2 val2` sets multiple keys in one network round-trip (~1ms) instead of individual SET calls (N ms). The codec can batch all PII fields from a single payload into one MSET. However, the codec's `encode()` is called per-payload (not per-workflow), so batching only works within a single payload, not across multiple payloads from different workflows.
+
+### Interaction with Task Queues
+
+The codec is configured on the Temporal `Client`. Every worker that connects with the same client configuration gets the same codec. When Worker A encodes PII to Redis and Worker B (on a different machine) decodes it, both read/write the same Redis instance. This is the same shared-service pattern as Temporal itself.
+
+**Requirement:** All workers MUST connect to the same Redis instance (or Redis cluster). This is enforced by passing the same Redis connection configuration to the codec on every worker.
+
+---
+
 ## References
 
 ### Our Code Files
