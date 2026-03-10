@@ -28,6 +28,8 @@ from .workflows.agent_ticket_workflow import AgentTicketWorkflow
 from .workflows.agent_activities import AgentTicketActivities
 from .fixtures.ticket_generator import generate_ticket_batch, get_ticket_ids
 from common.tui import console, WorkflowDashboard
+from common.temporal_client import create_temporal_client
+from common.pii_config import PIIConfig
 
 from common.services.zendesk_mock import MockZendeskService
 from .services.sla_rules_mock import MockSLARulesService
@@ -241,6 +243,10 @@ def parse_args() -> argparse.Namespace:
         "--sla-offset", type=int, default=5,
         help="SLA deadline offset in minutes from now (default: 5)",
     )
+    inject_parser.add_argument(
+        "--pii", action="store_true",
+        help="Enable PII redaction codec (requires Redis)",
+    )
 
     # live-worker command - agent worker for live 3-terminal demo
     live_worker_parser = subparsers.add_parser(
@@ -266,6 +272,10 @@ def parse_args() -> argparse.Namespace:
         "--live", action="store_true",
         help="Use real UC agent (requires OPENAI_API_KEY)",
     )
+    live_worker_parser.add_argument(
+        "--pii", action="store_true",
+        help="Enable PII redaction codec (requires Redis)",
+    )
 
     # live-dashboard command - live ticket dashboard for 3-terminal demo
     dashboard_parser = subparsers.add_parser(
@@ -274,6 +284,10 @@ def parse_args() -> argparse.Namespace:
     dashboard_parser.add_argument(
         "--refresh", type=float, default=2.0,
         help="Refresh interval in seconds (default: 2.0)",
+    )
+    dashboard_parser.add_argument(
+        "--pii", action="store_true",
+        help="Enable PII redaction codec (requires Redis)",
     )
 
     return parser.parse_args()
@@ -2057,10 +2071,11 @@ async def run_live_inject(
     console.print(f"[green]Generated {len(tickets)} tickets.[/green]")
     console.print()
 
-    client = await Client.connect(
-        config.temporal_address,
-        namespace=config.temporal_namespace,
-        data_converter=pydantic_data_converter,
+    pii_config = PIIConfig(enabled=args.pii) if hasattr(args, 'pii') and args.pii else None
+    if pii_config and pii_config.enabled:
+        console.print("[bold magenta]PII codec ENABLED -- PII will be stored in Redis, not Temporal[/bold magenta]")
+    client = await create_temporal_client(
+        config.temporal_address, config.temporal_namespace, pii_config
     )
 
     resolved_count = 0
@@ -2179,10 +2194,11 @@ async def run_live_worker(
         use_real_agent=use_real_agent,
     )
 
-    client = await Client.connect(
-        config.temporal_address,
-        namespace=config.temporal_namespace,
-        data_converter=pydantic_data_converter,
+    pii_config = PIIConfig(enabled=args.pii) if hasattr(args, 'pii') and args.pii else None
+    if pii_config and pii_config.enabled:
+        console.print("[bold magenta]PII codec ENABLED -- PII will be stored in Redis, not Temporal[/bold magenta]")
+    client = await create_temporal_client(
+        config.temporal_address, config.temporal_namespace, pii_config
     )
 
     worker = Worker(
@@ -2480,10 +2496,11 @@ async def run_live_dashboard(
     refresh = args.refresh
     task_queue = "sla-guardian-live"
 
-    client = await Client.connect(
-        config.temporal_address,
-        namespace=config.temporal_namespace,
-        data_converter=pydantic_data_converter,
+    pii_config = PIIConfig(enabled=args.pii) if hasattr(args, 'pii') and args.pii else None
+    if pii_config and pii_config.enabled:
+        console.print("[bold magenta]PII codec ENABLED -- PII will be stored in Redis, not Temporal[/bold magenta]")
+    client = await create_temporal_client(
+        config.temporal_address, config.temporal_namespace, pii_config
     )
 
     console.print()
