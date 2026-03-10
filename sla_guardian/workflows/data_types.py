@@ -108,6 +108,13 @@ class MemoryHit(BaseModel):
     suggested_action: str = ""
 
 
+class TokenMetrics(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
+
+
 class AgentResolution(BaseModel):
     ticket_id: str
     status: AgentStatus = AgentStatus.QUEUED
@@ -123,6 +130,7 @@ class AgentResolution(BaseModel):
     processing_time_ms: float = 0.0
     sandbox_commands: list[str] = Field(default_factory=list)
     sandbox_output: str = ""
+    token_metrics: TokenMetrics | None = None
 
 
 class AgentTicketState(BaseModel):
