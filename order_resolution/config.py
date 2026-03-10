@@ -1,10 +1,13 @@
 from __future__ import annotations
+import os
 from pydantic import BaseModel, Field
+
+_DEFAULT_TEMPORAL_ADDRESS = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
 
 
 class OrderResolutionConfig(BaseModel):
     """Configuration for the Order Resolution workflow."""
-    temporal_address: str = "localhost:7233"
+    temporal_address: str = _DEFAULT_TEMPORAL_ADDRESS
     temporal_namespace: str = "default"
     task_queue: str = "order-resolution"
     approval_threshold: float = 50.0  # Dollar amount above which human approval is required

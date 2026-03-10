@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
+
 from pydantic import BaseModel
+
+_DEFAULT_TEMPORAL_ADDRESS = os.environ.get("TEMPORAL_ADDRESS", "localhost:7233")
 
 
 class OnboardingConfig(BaseModel):
     """Configuration for the Onboarding Concierge workflow."""
 
-    temporal_address: str = "localhost:7233"
+    temporal_address: str = _DEFAULT_TEMPORAL_ADDRESS
     temporal_namespace: str = "default"
     task_queue: str = "onboarding-concierge"
     checkin_timeout_hours: int = 48
