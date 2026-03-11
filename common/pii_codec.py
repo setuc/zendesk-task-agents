@@ -9,7 +9,7 @@ import redis.asyncio as aioredis
 from temporalio.api.common.v1 import Payload
 from temporalio.converter import PayloadCodec
 
-from .pii_config import PII_FIELDS, PII_REF_PREFIX
+from .pii_config import DEFAULT_PII_FIELDS, PII_REF_PREFIX
 
 
 class PIIRedactingCodec(PayloadCodec):
@@ -20,9 +20,15 @@ class PIIRedactingCodec(PayloadCodec):
     On decode: finds ref tokens, batch-fetches from Redis, restores values.
     """
 
-    def __init__(self, redis_client: aioredis.Redis, ttl_seconds: int = 2592000) -> None:
+    def __init__(
+        self,
+        redis_client: aioredis.Redis,
+        ttl_seconds: int = 2592000,
+        fields: frozenset[str] | None = None,
+    ) -> None:
         self._redis = redis_client
         self._ttl = ttl_seconds
+        self._fields = fields or DEFAULT_PII_FIELDS
 
     async def encode(self, payloads: Sequence[Payload]) -> list[Payload]:
         encoded = []
@@ -91,7 +97,7 @@ class PIIRedactingCodec(PayloadCodec):
         if isinstance(obj, dict):
             for key in list(obj.keys()):
                 child_path = f"{path}.{key}"
-                if key in PII_FIELDS and obj[key] is not None:
+                if key in self._fields and obj[key] is not None:
                     ref_key = self._make_ref(child_path)
                     store[ref_key] = json.dumps(obj[key], default=str)
                     obj[key] = f"{PII_REF_PREFIX}{ref_key}"

@@ -24,7 +24,9 @@ async def create_temporal_client(
 
     if pii_config and pii_config.enabled:
         redis_client = aioredis.from_url(pii_config.redis_url, decode_responses=False)
-        codec = PIIRedactingCodec(redis_client, ttl_seconds=pii_config.ttl_seconds)
+        codec = PIIRedactingCodec(
+            redis_client, ttl_seconds=pii_config.ttl_seconds, fields=pii_config.fields,
+        )
         data_converter = dataclasses.replace(
             pydantic_data_converter,
             payload_codec=codec,
