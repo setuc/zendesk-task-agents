@@ -1,0 +1,41 @@
+{
+  "customer_id": "CUST-ENT-001",
+  "customer_name": "Acme Corp",
+  "tier": "enterprise",
+  "billing_status": "active",
+  "contact": {
+    "primary_name": "Jane Doe",
+    "primary_email": "jane.doe@acmecorp.com",
+    "phone": "+1-555-0142",
+    "timezone": "America/New_York"
+  },
+  "account_created": "2026-02-15T10:00:00Z",
+  "onboarding_start": "2026-03-01T09:00:00Z",
+  "service_plan": {
+    "plan_name": "Enterprise Pro",
+    "api_rate_limit": 10000,
+    "webhook_endpoints": 5,
+    "support_level": "dedicated",
+    "sla_response_hours": 4
+  },
+  "integrations": [
+    {
+      "integration_id": "int-acme-webhook-01",
+      "type": "webhook",
+      "endpoint_url": "https://api.acmecorp.com/webhooks/events",
+      "method": "POST",
+      "auth_type": "bearer_token",
+      "status": "pending_verification"
+    },
+    {
+      "integration_id": "int-acme-api-sync-01",
+      "type": "api_sync",
+      "endpoint_url": "https://api.acmecorp.com/sync/v2",
+      "method": "POST",
+      "auth_type": "api_key",
+      "status": "pending_verification"
+    }
+  ],
+  "assigned_concierge": "agent_onboarding_01",
+  "tags": ["enterprise", "high-touch", "api-integration"]
+}

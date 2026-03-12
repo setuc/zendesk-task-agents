@@ -1,0 +1,88 @@
+{
+  "policies": [
+    {
+      "priority": "low",
+      "customer_tier": "standard",
+      "first_response_hours": 48,
+      "resolution_hours": 120,
+      "description": "Standard tier, low priority: 48h first response, 120h resolution"
+    },
+    {
+      "priority": "normal",
+      "customer_tier": "standard",
+      "first_response_hours": 24,
+      "resolution_hours": 72,
+      "description": "Standard tier, normal priority: 24h first response, 72h resolution"
+    },
+    {
+      "priority": "high",
+      "customer_tier": "standard",
+      "first_response_hours": 12,
+      "resolution_hours": 48,
+      "description": "Standard tier, high priority: 12h first response, 48h resolution"
+    },
+    {
+      "priority": "urgent",
+      "customer_tier": "standard",
+      "first_response_hours": 8,
+      "resolution_hours": 24,
+      "description": "Standard tier, urgent priority: 8h first response, 24h resolution"
+    },
+    {
+      "priority": "low",
+      "customer_tier": "premium",
+      "first_response_hours": 24,
+      "resolution_hours": 72,
+      "description": "Premium tier, low priority: 24h first response, 72h resolution"
+    },
+    {
+      "priority": "normal",
+      "customer_tier": "premium",
+      "first_response_hours": 8,
+      "resolution_hours": 24,
+      "description": "Premium tier, normal priority: 8h first response, 24h resolution"
+    },
+    {
+      "priority": "high",
+      "customer_tier": "premium",
+      "first_response_hours": 4,
+      "resolution_hours": 16,
+      "description": "Premium tier, high priority: 4h first response, 16h resolution"
+    },
+    {
+      "priority": "urgent",
+      "customer_tier": "premium",
+      "first_response_hours": 2,
+      "resolution_hours": 8,
+      "description": "Premium tier, urgent priority: 2h first response, 8h resolution"
+    },
+    {
+      "priority": "low",
+      "customer_tier": "enterprise",
+      "first_response_hours": 8,
+      "resolution_hours": 24,
+      "description": "Enterprise tier, low priority: 8h first response, 24h resolution"
+    },
+    {
+      "priority": "normal",
+      "customer_tier": "enterprise",
+      "first_response_hours": 4,
+      "resolution_hours": 8,
+      "description": "Enterprise tier, normal priority: 4h first response, 8h resolution"
+    },
+    {
+      "priority": "high",
+      "customer_tier": "enterprise",
+      "first_response_hours": 2,
+      "resolution_hours": 4,
+      "description": "Enterprise tier, high priority: 2h first response, 4h resolution"
+    },
+    {
+      "priority": "urgent",
+      "customer_tier": "enterprise",
+      "first_response_hours": 1,
+      "resolution_hours": 2,
+      "description": "Enterprise tier, urgent priority: 1h first response, 2h resolution"
+    }
+  ]
+}

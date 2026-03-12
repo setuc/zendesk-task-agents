@@ -1,0 +1,36 @@
+{
+  "integration_id": "int-acme-webhook-01",
+  "endpoint_url": "https://api.acmecorp.com/webhooks/events",
+  "method": "POST",
+  "auth": {
+    "type": "bearer_token",
+    "token_env_var": "ACME_WEBHOOK_TOKEN",
+    "header_name": "Authorization",
+    "header_prefix": "Bearer"
+  },
+  "expected_response": {
+    "status_code": 200,
+    "content_type": "application/json",
+    "required_fields": ["status", "request_id"],
+    "schema": {
+      "type": "object",
+      "properties": {
+        "status": {"type": "string", "enum": ["accepted", "queued"]},
+        "request_id": {"type": "string"}
+      },
+      "required": ["status", "request_id"]
+    }
+  },
+  "test_payload": {
+    "event_type": "test.ping",
+    "timestamp": "2026-03-01T09:00:00Z",
+    "data": {
+      "message": "Integration test ping from onboarding concierge"
+    }
+  },
+  "retry_config": {
+    "max_attempts": 3,
+    "backoff_seconds": [2, 5, 10]
+  },
+  "timeout_seconds": 30
+}

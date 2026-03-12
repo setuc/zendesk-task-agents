@@ -1,0 +1,39 @@
+{
+  "milestones": [
+    {
+      "id": "ms-1",
+      "type": "account_verification",
+      "title": "Account Verification",
+      "description": "Verify customer account configuration, billing status, contact information, and service tier. Confirm all prerequisites are met before proceeding to integration setup.",
+      "scheduled_day": 1
+    },
+    {
+      "id": "ms-2",
+      "type": "integration_setup",
+      "title": "Integration Setup & Testing",
+      "description": "Test all customer webhook endpoints and API integrations in a Docker sandbox environment. Run diagnostics on any failures and create support tickets for engineering if needed.",
+      "scheduled_day": 3
+    },
+    {
+      "id": "ms-3",
+      "type": "training_delivery",
+      "title": "Training Material Delivery",
+      "description": "Generate and deliver personalised training materials covering API usage, webhook configuration, dashboard navigation, and platform best practices.",
+      "scheduled_day": 5
+    },
+    {
+      "id": "ms-4",
+      "type": "milestone_checkin",
+      "title": "Mid-Onboarding Check-In",
+      "description": "Analyse onboarding progress, review customer satisfaction, and address any outstanding issues or blockers. Escalate to account management if satisfaction is below threshold.",
+      "scheduled_day": 10
+    },
+    {
+      "id": "ms-5",
+      "type": "final_review",
+      "title": "Final Review",
+      "description": "Conduct comprehensive review of the entire onboarding journey. Verify all integrations remain healthy, summarise achievements, and outline next steps for the customer.",
+      "scheduled_day": 14
+    }
+  ]
+}

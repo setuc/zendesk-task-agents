@@ -1,0 +1,5 @@
+FROM python:3.12-slim
+WORKDIR /tests
+COPY test_harness.py .
+RUN pip install httpx
+ENTRYPOINT ["python", "test_harness.py"]

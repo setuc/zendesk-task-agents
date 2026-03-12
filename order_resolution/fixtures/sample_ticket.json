@@ -1,0 +1,16 @@
+{
+  "id": "TKT-10042",
+  "subject": "Order #ORD-2847 - Wrong color, damaged item, and overcharged",
+  "description": "Hi, I placed order #ORD-2847 last week for 3 items. I received:\n\n1. Blue wireless headphones - but I ordered RED ones (wrong color)\n2. Laptop stand - arrived with a crack in the base (damaged)\n3. USB-C hub - this is fine\n\nAlso, I was charged $149.99 for the headphones but the listing price was $129.99 when I ordered. That's a $20 overcharge.\n\nI'd like:\n- A replacement for the headphones in the correct color (red)\n- A partial refund for the damaged laptop stand ($45.99)\n- The $20 overcharge refunded\n\nOrder total was $224.97 but should have been $204.97. Please help!",
+  "status": "new",
+  "priority": "high",
+  "requester": {
+    "id": "CUST-5591",
+    "name": "Sarah Chen",
+    "email": "sarah.chen@example.com",
+    "tier": "premium"
+  },
+  "tags": ["order_issue", "multiple_problems", "refund_request"],
+  "created_at": "2026-03-04T10:30:00Z",
+  "updated_at": "2026-03-04T10:30:00Z"
+}
